@@ -44,11 +44,11 @@ struct Operation {
     size_t time;
 
     Operation() = default;
-    Operation(Type t, size_t a) {
-        type = t;
-        address = a;
-        time = rdtsc();
-    }
+    inline Operation(Type t, size_t a, size_t time = rdtsc())
+        : type(t)
+        , address(a)
+        , time(time)
+    {}
 };
 
 class FastLogger {

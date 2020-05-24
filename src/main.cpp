@@ -1,8 +1,6 @@
-#include "lfstack.h"
-#include "lfqueue.h"
-
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <chrono>
 #include <thread>
 #include <mutex>
@@ -11,6 +9,9 @@
 #include <queue>
 #include <utility>
 #include <signal.h>
+
+#include "lfstack.h"
+#include "lfqueue.h"
 
 void check(bool good) {
     if (!good)
@@ -126,7 +127,7 @@ void abstractStressTest(std::function<void(int, int)> f) {
     for (int i = 1; i <= std::thread::hardware_concurrency(); i++)
         printf("\t%d", i);
     printf("\n");
-    for (int i = 500000; i <= 2000000; i += 500000) {
+    for (int i = 500000; i <= 3000000; i += 500000) {
         printf("%d\t", i);
         for (int j = 1; j <= std::thread::hardware_concurrency(); j++) {
             std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();

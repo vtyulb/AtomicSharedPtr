@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <memory>
 #include <thread>
+#include <stack>
 
 #include "fast_logger.h"
 
@@ -49,28 +50,45 @@ public:
     SharedPtr& operator=(const SharedPtr &other) = delete;
     SharedPtr& operator=(SharedPtr &&other) {
         if (controlBlock != other.controlBlock) {
-            unref();
+            unref(controlBlock);
             controlBlock = other.controlBlock;
             other.controlBlock = nullptr;
         }
         return *this;
     }
-    ~SharedPtr() { unref(); }
+    ~SharedPtr() {
+        unref(controlBlock);
+        return;
+
+        thread_local std::vector<ControlBlock<T>*> destructionQueue;
+        thread_local bool destructionInProgress = false;
+
+        destructionQueue.push_back(controlBlock);
+        if (!destructionInProgress) {
+            destructionInProgress = true;
+            while (destructionQueue.size()) {
+                ControlBlock<T> *blockToUnref = destructionQueue.back();
+                destructionQueue.pop_back();
+                unref(blockToUnref);
+            }
+            destructionInProgress = false;
+        }
+    }
 
     SharedPtr copy() { return SharedPtr(*this); }
     T* get() const { return controlBlock->data; }
     T* operator*() const { return controlBlock->data; }
 
 private:
-    void unref() {
-        if (controlBlock){
-            int before = controlBlock->refCount.fetch_add(-1);
+    void unref(ControlBlock<T> *blockToUnref) {
+        if (blockToUnref) {
+            int before = blockToUnref->refCount.fetch_sub(1);
             assert(before);
-            FAST_LOG(Operation::Unref, (reinterpret_cast<size_t>(controlBlock) << MAGIC_LEN / 2) | before);
+            FAST_LOG(Operation::Unref, (reinterpret_cast<size_t>(blockToUnref) << MAGIC_LEN / 2) | before);
             if (before == 1) {
-                FAST_LOG(Operation::ObjectDestroyed, reinterpret_cast<size_t>(controlBlock));
-                delete controlBlock->data;
-                delete controlBlock;
+                FAST_LOG(Operation::ObjectDestroyed, reinterpret_cast<size_t>(blockToUnref));
+                delete blockToUnref->data;
+                delete blockToUnref;
             }
         }
     }
@@ -158,9 +176,21 @@ SharedPtr<T> AtomicSharedPtr<T>::get() {
 
 template<typename T>
 AtomicSharedPtr<T>::~AtomicSharedPtr() {
+    thread_local std::vector<size_t> destructionQueue;
+    thread_local bool destructionInProgress = false;
+
     auto block = reinterpret_cast<ControlBlock<T>*>(packedPtr.load() >> MAGIC_LEN);
     assert((packedPtr & MAGIC_MASK) == 0);
-    destroyOldControlBlock(packedPtr);
+    destructionQueue.push_back(packedPtr);
+    if (!destructionInProgress) {
+        destructionInProgress = true;
+        while (destructionQueue.size()) {
+            size_t controlBlockToDestroy = destructionQueue.back();
+            destructionQueue.pop_back();
+            destroyOldControlBlock(controlBlockToDestroy);
+        }
+        destructionInProgress = false;
+    }
 }
 
 template<typename T>
@@ -210,18 +240,16 @@ bool AtomicSharedPtr<T>::compareExchange(T *expected, SharedPtr<T> &&newOne) {
 template<typename T>
 void AtomicSharedPtr<T>::destroyOldControlBlock(size_t oldPackedPtr) {
     FAST_LOG(Operation::CASDestructed, oldPackedPtr);
-    size_t localRefcount = (oldPackedPtr & MAGIC_MASK);
-    int diff = localRefcount - 1;
-    if (diff != 0) {
-        auto block = reinterpret_cast<ControlBlock<T>*>(oldPackedPtr >> MAGIC_LEN);
-        auto refCountBefore = block->refCount.fetch_add(diff);
-        FAST_LOG(Operation::Unref, refCountBefore);
-        assert(refCountBefore);
-        if (refCountBefore == -diff) {
-            FAST_LOG(Operation::ObjectDestroyed, reinterpret_cast<size_t>(block));
-            delete block->data;
-            delete block;
-        }
+    assert((oldPackedPtr & MAGIC_MASK) == 0);
+
+    auto block = reinterpret_cast<ControlBlock<T>*>(oldPackedPtr >> MAGIC_LEN);
+    auto refCountBefore = block->refCount.fetch_sub(1);
+    FAST_LOG(Operation::Unref, refCountBefore);
+    assert(refCountBefore);
+    if (refCountBefore == 1) {
+        FAST_LOG(Operation::ObjectDestroyed, reinterpret_cast<size_t>(block));
+        delete block->data;
+        delete block;
     }
     FAST_LOG(Operation::CASFin, oldPackedPtr);
 }
