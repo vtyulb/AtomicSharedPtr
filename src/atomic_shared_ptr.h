@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cassert>
+#include <cstdlib>
 #include <memory>
 #include <thread>
 

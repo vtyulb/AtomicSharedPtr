@@ -1,16 +1,15 @@
 #pragma once
 
+#if not FAST_LOGGING_ENABLED
+#define FAST_LOG(a, b) (static_cast<void>(0))
+#else
+#define FAST_LOG(a, b) FastLogger::Instance().push(a, b)
+
 #include <algorithm>
 #include <thread>
 #include <mutex>
 #include <vector>
 #include <deque>
-
-#ifndef FAST_LOGGING_ENABLED
-#define FAST_LOG(a, b) FastLogger::Instance().push(a, b)
-#else
-#define FAST_LOG(a, b) (static_cast<void>(0))
-#endif
 
 namespace LFStructs {
 
@@ -121,3 +120,5 @@ private:
 };
 
 } // namespace LFStructs
+
+#endif // FAST_LOGGING_ENABLED

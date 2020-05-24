@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <chrono>
 #include <thread>
+#include <mutex>
 #include <stack>
 #include <vector>
 #include <queue>
@@ -156,8 +157,10 @@ void all_stack_tests() {
 }
 
 void abortTraceLogger(int sig) {
+#if FAST_LOGGING_ENABLED
     LFStructs::FastLogger::PrintTrace();
     exit(0);
+#endif
 }
 
 int main()
