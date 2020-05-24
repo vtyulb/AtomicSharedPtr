@@ -19,7 +19,7 @@ but mine implementation uses it's own block, because it's a lot easier.
 # Other implementations
 I currently know about 2 different std::atomic&lt;std::shared_ptr> implementations.
 First one is https://bitbucket.org/anthonyw/atomic_shared_ptr/src/default/atomic_shared_ptr
-It uses 128-bit Compare-And-Swap (CAS) operations. It's not supported on all platforms and it is slow.
+It uses 128-bit Compare-And-Swap (CAS) operations. Such operations are not supported on all platforms and they are very slow.
 
 Second implementation is from facebook [folly/concurrency](https://github.com/facebook/folly/blob/master/folly/concurrency/AtomicSharedPtr.h)
 It uses simple hack. Inside 64-bit pointer there is 16 bit reference counter (refcount).
@@ -40,7 +40,19 @@ because there can be several atomic pointers for the same control block.
 - Map is under construction
 - FastLogger
 
+# ABA problem and chain reaction at destruction
+AtomicSharedPtr is not affected by ABA problem in any scenario. You can push same control block
+to pointer over and over again, nothing bad will happen.
+
+However, if you write your own Lock-Free structs based on AtomicSharedPtr you can encounter chain reaction problem.
+For example, if you have stack with 1000000 elements and then you destroy it's top, than top will destroy next
+pointer. Next pointer will destroy next one and so on. My implementation uses deferred destruction which is a little slower,
+but it won't crash because of stack overflow. There will be a visible lag when whole chain would destruct,
+and there won't be any lag with mutexed std::stack.
+
 # Proof-Of-Work
+Code passes thread, memory and address sanitizers while under stress test for 10+ minutes.
+Implementation was not tested in any big production yet.
 
 # Build
 ```
@@ -53,7 +65,11 @@ make
 ```
 
 # Speed
-This is sample output with Core i7-6700hq processor.
+This is sample output with Core i7-6700hq processor. First column is number of operations push/pop divided around 50/50 by rand.
+All other columns are time in milliseconds which took the test to finish. LF structs are based on AtomicSharedPtr.
+Lockable structs use std::queue/std::stack and a mutex for synchronizations. Lesser is better.
+
+There are a lot of optimisations still pending.
 ```
 vlad@vtyulb-thinkpad ~/AtomicSharedPtr/build (git)-[master] % ./AtomicSharedPtr 
 running simple LFQueue test...
@@ -99,3 +115,14 @@ running lockable stack stress test...
 ```
 
 # Debugging with FastLogger
+FastLogger is very completed but highly specialized tool. It captures events in a thread_local
+ring buffer, which you can view on segfault or abortiong, thus understanding what happend.
+rdtsc is used to +- synchronize time. I wasted something like 20+ hours on single bug, and
+then I wrote FastLogger. After several more hours bug was fixed.
+
+Motivational screen:
+<p>
+  <img src="https://github.com/vtyulb/AtomicSharedPtr/master/resources/Screenshot_20200523_190342.png">
+</p>
+
+Second bug with [heap-use-after-free](resources/00007fffec016880_sample_race_at_destruction)
