@@ -40,6 +40,10 @@ because there can be several atomic pointers for the same control block.
 - Map is under construction
 - FastLogger
 
+I suggest you to look at [queue](https://github.com/vtyulb/AtomicSharedPtr/blob/master/src/lfqueue.h) and
+[stack](https://github.com/vtyulb/AtomicSharedPtr/blob/master/src/lfstack.h) code - life becomes
+a lot easier when don't have to worry about memory.
+
 # ABA problem and chain reaction at destruction
 AtomicSharedPtr is not affected by ABA problem in any scenario. You can push same control block
 to pointer over and over again, nothing bad will happen.
@@ -52,7 +56,7 @@ and there won't be any lag with mutexed std::stack.
 
 # Proof-Of-Work
 Code passes thread, memory and address sanitizers while under stress test for 10+ minutes.
-Implementation was not tested in any big production yet.
+Implementation was not tested in any big production yet and not recommended for production use.
 
 # Build
 ```
@@ -69,7 +73,7 @@ This is sample output with Core i7-6700hq processor. First column is number of o
 All other columns are time in milliseconds which took the test to finish. LF structs are based on AtomicSharedPtr.
 Lockable structs use std::queue/std::stack and a mutex for synchronizations. Lesser is better.
 
-There are a lot of optimisations still pending.
+There are a lot of optimizations still pending.
 ```
 vlad@vtyulb-thinkpad ~/AtomicSharedPtr/build (git)-[master] % ./AtomicSharedPtr 
 running simple LFQueue test...
@@ -122,7 +126,15 @@ then I wrote FastLogger. After several more hours bug was fixed.
 
 Motivational screen:
 <p>
-  <img src="https://github.com/vtyulb/AtomicSharedPtr/master/resources/Screenshot_20200523_190342.png">
+  <img src="https://raw.githubusercontent.com/vtyulb/AtomicSharedPtr/master/resources/Screenshot_20200523_190342.png">
 </p>
 
-Second bug with [heap-use-after-free](resources/00007fffec016880_sample_race_at_destruction)
+Second bug with [heap-use-after-free](https://raw.githubusercontent.com/vtyulb/AtomicSharedPtr/master/resources/00007fffec016880_sample_race_at_destruction)
+
+# Other things
+I also recommend reading simple wait-free queue algorithm by Alex Kogan and Erez Petrank in article
+[Wait-Free Queues With Multiple Enqueuers and Dequeuers](http://www.cs.technion.ac.il/~erez/Papers/wfquque-ppopp.pdf)
+It looks like their algorithm is not possible to implement without proper garbage collection
+(they used java). It even looks that I can't implement it with any available hacks for now.
+Some ideas were taken from that algorithm, at least continous global refcount updating looks
+alike thread helping tasks from wait-free queue.
