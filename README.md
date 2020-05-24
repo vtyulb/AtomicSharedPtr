@@ -124,16 +124,28 @@ ring buffer, which you can view on segfault or abortiong, thus understanding wha
 rdtsc is used to +- synchronize time. I wasted something like 20+ hours on single bug, and
 then I wrote FastLogger. After several more hours bug was fixed.
 
-Motivational screen:
+Due to no active synchronization (except rdtsc operation) FastLogger is quite fast.
+If you ran FAST_LOG() 2 times in a row, you would be able to see that it took around
+30-50 clock cycles between log entries. Atomic operations take 700-1600 cycles, so
+FastLogger's impacts measurement result quite a little. Having logs to debug your
+crashing once-per-day algorithm is invaluable. It is also very interesting to see
+how processor cores bounce across your tasks.
+
+On next motivational screen you can see, that local was dropped after CAS and then thread woke
+only to see, that it can't decrease local refcount anymore.
 <p>
   <img src="https://raw.githubusercontent.com/vtyulb/AtomicSharedPtr/master/resources/Screenshot_20200523_190342.png">
 </p>
 
 Second bug with [heap-use-after-free](https://raw.githubusercontent.com/vtyulb/AtomicSharedPtr/master/resources/00007fffec016880_sample_race_at_destruction)
+This one is easier. Thread went to sleep right after CAS (operation 12) at address 00007fffec016880.
+It did not increased refcount for threads from which it stole local refcount. Then foreign threads
+destroyed their objects decreasing refcount (operation 51) leading to object destruction (operation 100).
+Then thread finally woke up just to panic as it wanted to use destroyed object.
 
 # Other things
 I also recommend reading simple wait-free queue algorithm by Alex Kogan and Erez Petrank in article
-[Wait-Free Queues With Multiple Enqueuers and Dequeuers](http://www.cs.technion.ac.il/~erez/Papers/wfquque-ppopp.pdf)
+[Wait-Free Queues With Multiple Enqueuers and Dequeuers](http://www.cs.technion.ac.il/~erez/Papers/wfquque-ppopp.pdf).
 It looks like their algorithm is not possible to implement without proper garbage collection
 (they used java). It even looks that I can't implement it with any available hacks for now.
 Some ideas were taken from that algorithm, at least continous global refcount updating looks

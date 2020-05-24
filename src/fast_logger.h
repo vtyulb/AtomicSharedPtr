@@ -76,10 +76,10 @@ public:
         assert(false);
     }
 
-    // smallest tick count diff I ever captured on one thread - 24
-    // 36 ticks is a common number between two calls
-    // 100-200 ticks to capture something usefull
-    // 700-1600 ticks to capture atomic operation under load
+    // smallest clock cycle diff I ever captured on one thread - 24
+    // 36 clock cycle is a common number between two calls
+    // 100-200 clock cycles to capture something usefull
+    // 700-1600 cycle cycles to capture atomic operation under load
     void push(Operation::Type t, size_t address) {
         data[currentIndex] = Operation(t, address);
         currentIndex += 1;
