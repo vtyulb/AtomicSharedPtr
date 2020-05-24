@@ -57,9 +57,6 @@ public:
         return *this;
     }
     ~SharedPtr() {
-        unref(controlBlock);
-        return;
-
         thread_local std::vector<ControlBlock<T>*> destructionQueue;
         thread_local bool destructionInProgress = false;
 
