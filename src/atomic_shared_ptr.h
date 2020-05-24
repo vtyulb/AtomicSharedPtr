@@ -46,7 +46,10 @@ public:
         assert(before);
         FAST_LOG(Operation::Ref, (reinterpret_cast<size_t>(controlBlock) << MAGIC_LEN / 2) | before);
     };
-    explicit SharedPtr(SharedPtr &&other) { controlBlock = other.controlBlock; other.controlBlock = nullptr; };
+    explicit SharedPtr(SharedPtr &&other) {
+        controlBlock = other.controlBlock;
+        other.controlBlock = nullptr;
+    };
     SharedPtr& operator=(const SharedPtr &other) = delete;
     SharedPtr& operator=(SharedPtr &&other) {
         if (controlBlock != other.controlBlock) {

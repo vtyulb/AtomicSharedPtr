@@ -3,7 +3,7 @@
 #if not FAST_LOGGING_ENABLED
 #define FAST_LOG(a, b) (static_cast<void>(0))
 #else
-#define FAST_LOG(a, b) FastLogger::Instance().push(a, b)
+#define FAST_LOG(a, b) LFStructs::FastLogger::Instance().push(a, b)
 
 #include <algorithm>
 #include <thread>
@@ -77,9 +77,9 @@ public:
     }
 
     // smallest tick count diff I ever captured on one thread - 24
-    // 30 ticks is a common number between two calls
+    // 36 ticks is a common number between two calls
     // 100-200 ticks to capture something usefull
-    // 1000-2000 ticks to capture atomic operation under load
+    // 700-1600 ticks to capture atomic operation under load
     void push(Operation::Type t, size_t address) {
         data[currentIndex] = Operation(t, address);
         currentIndex += 1;
