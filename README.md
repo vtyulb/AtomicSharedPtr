@@ -125,14 +125,14 @@ rdtsc is used to +- synchronize time. I wasted something like 20+ hours on singl
 then I wrote FastLogger. After several more hours bug was fixed.
 
 Due to no active synchronization (except rdtsc operation) FastLogger is quite fast.
-If you ran FAST_LOG() 2 times in a row, you would be able to see that it took around
+If you run FAST_LOG() 2 times in a row, you would be able to see that it took around
 30-50 clock cycles between log entries. Atomic operations take 700-1600 cycles, so
-FastLogger's impacts measurement result quite a little. Having logs to debug your
-crashing once-per-day algorithm is invaluable. It is also very interesting to see
+FastLogger's impacts measurement result quite a little. Logs to debug your
+crashing once-per-day algorithm are invaluable. It is also very interesting to see
 how processor cores bounce across your tasks.
 
-On next motivational screen you can see, that local was dropped after CAS and then thread woke
-only to see, that it can't decrease local refcount anymore.
+On next motivational screen you can see, that local refcount was moved to global and dropped after CAS. Then thread woke
+only to see, that it can't decrease local refcount anymore despite the same pointer address (internal ABA problem, already fixed).
 <p>
   <img src="https://raw.githubusercontent.com/vtyulb/AtomicSharedPtr/master/resources/Screenshot_20200523_190342.png">
 </p>
