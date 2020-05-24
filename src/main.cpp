@@ -122,13 +122,12 @@ void stress_test(int actionNumber, int threadCount) {
 }
 
 void abstractStressTest(std::function<void(int, int)> f) {
-    const int maxThreadCount = 8;
-    for (int i = 1; i <= maxThreadCount; i++)
+    for (int i = 1; i <= std::thread::hardware_concurrency(); i++)
         printf("\t%d", i);
     printf("\n");
     for (int i = 500000; i <= 2000000; i += 500000) {
         printf("%d\t", i);
-        for (int j = 1; j <= maxThreadCount; j++) {
+        for (int j = 1; j <= std::thread::hardware_concurrency(); j++) {
             std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
             f(i, j);
             std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
