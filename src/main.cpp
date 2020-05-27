@@ -7,11 +7,12 @@
 #include <stack>
 #include <vector>
 #include <queue>
-#include <utility>
+#include <map>
 #include <signal.h>
 
 #include "lfstack.h"
 #include "lfqueue.h"
+#include "lfmap.h"
 
 void check(bool good) {
     if (!good)
@@ -46,24 +47,114 @@ void simple_queue_test() {
     check(!bool(queue.pop()));
 }
 
+void simple_map_test() {
+    LFStructs::LFMap<int, int> map;
+    map.upsert(5, 100);
+    check(*map.get(5) == 100);
+    map.upsert(7, 101);
+    map.upsert(6, 99);
+    check(*map.get(6) == 99);
+    check(*map.get(7) == 101);
+    map.remove(7);
+    check(*map.get(5) == 100);
+    check(!bool(map.get(7)));
+}
+
+void correctness_map_test() {
+    LFStructs::LFMap<int, int> lfMap;
+    std::map<int, int> map;
+    for (int i = 0; i <= 1000000; i++) {
+        if (i % 100000 == 0) {
+            printf("%d%%  ", i / 10000);
+            fflush(stdout);
+        }
+        if (rand() % 2) {
+            int key = rand() % 100;
+            auto value = lfMap.get(key);
+            if (!bool(value)) {
+                check(map.find(key) == map.end());
+            } else {
+                int mapVal = map[key];
+                check(mapVal == *value);
+            }
+        } else if (rand() % 2) {
+            int key = rand() % 100;
+            int value = rand() % 100;
+            map[key] = value;
+            lfMap.upsert(key, value);
+        } else {
+            int key = rand() % 100;
+            map.erase(key);
+            lfMap.remove(key);
+        }
+    }
+
+    printf("\n");
+}
+
+void lfmap_stress_test(int actionNumber, int threadCount) {
+    std::vector<std::thread> threads;
+    LFStructs::LFMap<int, int> map;
+    for (int i = 0; i < 10000; i++)
+        map.upsert(rand() % 1000000, rand());
+    for (int i = 0; i < threadCount; i++)
+        threads.push_back(std::thread([&map, actionNumber, threadCount](){
+            const int MAX = 1000;
+            for (int j = 0; j < actionNumber / threadCount; j++) {
+                int op = rand() % 100;
+                if (op < 1)
+                    map.remove(rand() % MAX);
+                else if (op < 2)
+                    map.upsert(rand() % MAX, rand());
+                else
+                    map.get(rand() % MAX);
+            }
+        }));
+
+    for (auto &thread : threads)
+        thread.join();
+}
+
+void lockable_map_stress_test(int actionNumber, int threadCount) {
+    std::vector<std::thread> threads;
+    std::map<int, int> map;
+    std::mutex mutex;
+    for (int i = 0; i < 10000; i++)
+        map[rand() % 1000000] = rand();
+    for (int i = 0; i < threadCount; i++)
+        threads.push_back(std::thread([&map, &mutex, actionNumber, threadCount](){
+            const int MAX = 1000;
+            for (int j = 0; j < actionNumber / threadCount; j++) {
+                int op = rand() % 100;
+                mutex.lock();
+                if (op < 1)
+                    map.find(rand() % MAX);
+                else if (op < 2)
+                    map[rand() % MAX] = rand();
+                else
+                    map.find(rand() % MAX);
+                mutex.unlock();
+            }
+        }));
+
+    for (auto &thread : threads)
+        thread.join();
+}
 
 template<typename T>
 void stress_test_lockable_stack(int actionNumber, int threadCount) {
     std::vector<std::thread> threads;
     T container;
-//    std::atomic_flag lock = ATOMIC_FLAG_INIT;
     std::mutex lock;
     for (int i = 0; i < threadCount; i++)
         threads.push_back(std::thread([i, actionNumber, &container, &lock, threadCount](){
             for (int j = 0; j < actionNumber / threadCount; j++) {
                 bool op = rand() % 2;
-//                while (lock.test_and_set()) {}
                 lock.lock();
                 if (op)
                     container.push(rand());
                 else if (container.size())
                     container.pop();
-//                lock.clear();
                 lock.unlock();
             }
         }));
@@ -127,7 +218,7 @@ void abstractStressTest(std::function<void(int, int)> f) {
     for (int i = 1; i <= std::thread::hardware_concurrency(); i++)
         printf("\t%d", i);
     printf("\n");
-    for (int i = 500000; i <= 3000000; i += 500000) {
+    for (int i = 500000; i <= 2000000; i += 500000) {
         printf("%d\t", i);
         for (int j = 1; j <= std::thread::hardware_concurrency(); j++) {
             std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
@@ -140,21 +231,36 @@ void abstractStressTest(std::function<void(int, int)> f) {
     }
 }
 
+void all_map_tests() {
+    printf("running simple LFMap test...\n");
+    simple_map_test();
+    printf("\nrunning correctness LFMap test...\n");
+    correctness_map_test();
+    printf("\nrunning LFMap stress test...\n");
+    abstractStressTest(lfmap_stress_test);
+    printf("\nrunning lockable map stress test\n");
+    abstractStressTest(lockable_map_stress_test);
+    printf("\n\n");
+}
+
 void all_queue_tests() {
     printf("running simple LFQueue test...\n");
     simple_queue_test();
-    printf("\nrunning lf queue stress test...\n");
+    printf("\nrunning LFQueue stress test...\n");
     abstractStressTest(stress_test<LFStructs::LFQueue<int>>);
     printf("\nrunning lockable queue stress test...\n");
     abstractStressTest(stress_test_lockable_stack<std::queue<int>>);
+    printf("\n");
 }
 
 void all_stack_tests() {
-    printf("\nrunning simple LFStack test...\n");
-    printf("\nrunning lf stack stress test...\n");
+    printf("running simple LFStack test...\n");
+    simple_stack_test();
+    printf("\nrunning LFStack stress test...\n");
     abstractStressTest(stress_test<LFStructs::LFStack<int>>);
     printf("\nrunning lockable stack stress test...\n");
     abstractStressTest(stress_test_lockable_stack<std::stack<int>>);
+    printf("\n");
 }
 
 void abortTraceLogger(int sig) {
@@ -167,6 +273,7 @@ void abortTraceLogger(int sig) {
 int main()
 {
     signal(SIGABRT, abortTraceLogger);
+    all_map_tests();
     all_queue_tests();
     all_stack_tests();
     return 0;

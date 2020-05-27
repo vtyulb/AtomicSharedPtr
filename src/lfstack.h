@@ -27,13 +27,11 @@ private:
 template<typename T>
 void LFStack<T>::push(const T &data) {
     FAST_LOG(Operation::Push, data);
-    auto node = new Node{};
-    node->next = top.get(),
-    node->data = data;
-
-    SharedPtr<Node> newTop(node);
-    while (!top.compareExchange(node->next.get(), std::move(newTop))) {
-        node->next = top.get();
+    SharedPtr<Node> newTop(new Node());
+    newTop->next = top.get();
+    newTop->data = data;
+    while (!top.compareExchange(newTop->next.get(), std::move(newTop))) {
+        newTop->next = top.get();
     }
 }
 

@@ -40,22 +40,35 @@ public:
         FAST_LOG(Operation::ObjectCreated, reinterpret_cast<size_t>(controlBlock));
     }
     explicit SharedPtr(ControlBlock<T> *controlBlock): controlBlock(controlBlock) {}
-    explicit SharedPtr(const SharedPtr &other) {
+    SharedPtr(const SharedPtr &other) {
         controlBlock = other.controlBlock;
-        int before = controlBlock->refCount.fetch_add(1);
-        assert(before);
-        FAST_LOG(Operation::Ref, (reinterpret_cast<size_t>(controlBlock) << MAGIC_LEN / 2) | before);
+        if (controlBlock != nullptr) {
+            int before = controlBlock->refCount.fetch_add(1);
+            assert(before);
+            FAST_LOG(Operation::Ref, (reinterpret_cast<size_t>(controlBlock) << MAGIC_LEN / 2) | before);
+        }
     };
-    explicit SharedPtr(SharedPtr &&other) {
+    SharedPtr(SharedPtr &&other) noexcept {
         controlBlock = other.controlBlock;
         other.controlBlock = nullptr;
     };
-    SharedPtr& operator=(const SharedPtr &other) = delete;
+    SharedPtr& operator=(const SharedPtr &other) {
+        auto old = controlBlock;
+        controlBlock = other.controlBlock;
+        if (controlBlock != nullptr) {
+            int before = controlBlock->refCount.fetch_add(1);
+            assert(before);
+            FAST_LOG(Operation::Ref, (reinterpret_cast<size_t>(controlBlock) << MAGIC_LEN / 2) | before);
+        }
+        unref(old);
+        return *this;
+    };
     SharedPtr& operator=(SharedPtr &&other) {
         if (controlBlock != other.controlBlock) {
-            unref(controlBlock);
+            auto old = controlBlock;
             controlBlock = other.controlBlock;
             other.controlBlock = nullptr;
+            unref(old);
         }
         return *this;
     }
@@ -76,8 +89,8 @@ public:
     }
 
     SharedPtr copy() { return SharedPtr(*this); }
-    T* get() const { return controlBlock->data; }
-    T* operator*() const { return controlBlock->data; }
+    T* get() const { return controlBlock ? controlBlock->data : nullptr; }
+    T* operator->() const { return controlBlock->data; }
 
 private:
     void unref(ControlBlock<T> *blockToUnref) {
@@ -179,9 +192,14 @@ AtomicSharedPtr<T>::~AtomicSharedPtr() {
     thread_local std::vector<size_t> destructionQueue;
     thread_local bool destructionInProgress = false;
 
-    auto block = reinterpret_cast<ControlBlock<T>*>(packedPtr.load() >> MAGIC_LEN);
-    assert((packedPtr & MAGIC_MASK) == 0);
-    destructionQueue.push_back(packedPtr);
+    size_t packedPtrCopy = packedPtr.load();
+    auto block = reinterpret_cast<ControlBlock<T>*>(packedPtrCopy >> MAGIC_LEN);
+    size_t diff = packedPtrCopy & MAGIC_MASK;
+    if (diff != 0) {
+        block->refCount.fetch_add(diff);
+    }
+
+    destructionQueue.push_back(packedPtrCopy);
     if (!destructionInProgress) {
         destructionInProgress = true;
         while (destructionQueue.size()) {
@@ -240,7 +258,7 @@ bool AtomicSharedPtr<T>::compareExchange(T *expected, SharedPtr<T> &&newOne) {
 template<typename T>
 void AtomicSharedPtr<T>::destroyOldControlBlock(size_t oldPackedPtr) {
     FAST_LOG(Operation::CASDestructed, oldPackedPtr);
-    assert((oldPackedPtr & MAGIC_MASK) == 0);
+//    assert((oldPackedPtr & MAGIC_MASK) == 0);
 
     auto block = reinterpret_cast<ControlBlock<T>*>(oldPackedPtr >> MAGIC_LEN);
     auto refCountBefore = block->refCount.fetch_sub(1);

@@ -40,7 +40,7 @@ void LFQueue<T>::push(const T &data) {
                                  .data = data
                              });
 
-    while (1) {
+    while (true) {
         SharedPtr<Node> currentBack = back.get();
         if (currentBack.get()->next.compareExchange(nullptr, newBack.copy())) {
             back.compareExchange(currentBack.get(), std::move(newBack));

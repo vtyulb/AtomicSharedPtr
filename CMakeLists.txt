@@ -11,6 +11,7 @@ add_executable(AtomicSharedPtr
     src/main.cpp
     src/lfqueue.h
     src/lfstack.h
+    src/lfmap.h
     src/fast_logger.h
     src/atomic_shared_ptr.h
 )
@@ -25,5 +26,5 @@ if(ENABLE_FAST_LOGGING)
 endif()
 
 set (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -fno-omit-frame-pointer -fsanitize=thread")
-set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fno-omit-frame-pointer -fsanitize=address")
+#set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fno-omit-frame-pointer -fsanitize=address")
 #set (CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
