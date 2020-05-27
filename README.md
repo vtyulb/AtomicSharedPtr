@@ -36,9 +36,39 @@ to control block atomically. Global refcount inside control block is required an
 because there can be several atomic pointers for the same control block.
 
 # Project structure
-- AtomicSharedPtr, SharedPtr and ControlBlock
+- AtomicSharedPtr, SharedPtr, ControlBlock and FastSharedPtr
 - Stack, Queue, Map
 - FastLogger
+
+AtomicSharedPtr::getFast() -> FastSharedPtr:
+- Destruction of AtomicSharedPtr during lifetime of FastSharedPtr is undefined behaviour
+- Read is one-time fetch_add
+- Destruction is one compare_exchange if nothing changed, one if AtomicSharedPtr
+changed. One or more compare_exchanges might be required on active work
+
+AtomicSharedPtr::get() -> SharedPtr:
+- No lifetime dependencies
+- Read is 2 fetch_add + 1 compare_exchange. One or more CAS might be required on active work
+- Destruction if 1 fetch_sub
+- Data pointer access is free
+- Copying is 1 fetch_add
+
+AtomicSharedPtr::compareExchange():
+- This is actually a strong version
+- 1 AtomicSharedPtr::get() + zero or more {fetch_add + CAS + fetch_sub} + one or more CAS
+
+Stack:
+- Push is one or more {AtomicSharedPtr::get() + AtomicSharedPtr::compareExchange}
+- Pop is one or more {AtomicSharedPtr::get() + AtomicSharedPtr::compareExchange}
+
+Queue:
+- Push is AtomicSharedPtr::compareExchanged + one or more {AtomicSharedPtr::get() + AtomicSharedPtr::compareExchange}
+- Pop is one or more {AtomicSharedPtr::get() + test_and_set() + AtomicSharedPtr::compareExchange}
+
+Map:
+- upsert is 1 or more {AtomicSharedPtr::get() + log(N) non-atomic instructions on average}
+- remove is 1 or more {AtomicSharedPtr::get() + log(N) non-atomic instructions on average}
+- get is 1 AtomicSharedPtr::getFast() + log(N) non-atomic instruction on average
 
 I suggest you to look at [queue](https://github.com/vtyulb/AtomicSharedPtr/blob/master/src/lfqueue.h) and
 [stack](https://github.com/vtyulb/AtomicSharedPtr/blob/master/src/lfstack.h) code - life becomes

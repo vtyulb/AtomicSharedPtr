@@ -34,7 +34,7 @@ private:
 
 template<typename Key, typename Value>
 std::optional<Value> LFMap<Key, Value>::get(Key key) {
-    SharedPtr<Node> rootCopy = root.get();
+    FastSharedPtr<Node> rootCopy = root.getFast();
     Node *node = rootCopy.get();
     while (node != nullptr) {
         if (node->key < key)

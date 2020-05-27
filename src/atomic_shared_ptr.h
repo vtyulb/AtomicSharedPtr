@@ -112,6 +112,43 @@ private:
 
 
 template<typename T>
+class alignas(CACHE_LINE_SIZE) FastSharedPtr {
+public:
+    FastSharedPtr(const FastSharedPtr<T> &other) = delete;
+    FastSharedPtr(FastSharedPtr<T> &&other)
+        : knownValue(other.knownValue)
+        , foreignPackedPtr(other.foreignPackedPtr)
+        , data(other.data)
+    {
+        other.knownValue = 0;
+    };
+    ~FastSharedPtr() {
+        if (knownValue != 0) {
+            size_t expected = knownValue;
+            while (!foreignPackedPtr.compare_exchange_weak(expected, expected - 1))
+                if (((expected >> MAGIC_LEN) != (knownValue >> MAGIC_LEN)) || !(expected & MAGIC_MASK))
+                    return;
+        }
+    };
+
+    T* get() { return data; }
+    T* operator->(){ return data; }
+private:
+    FastSharedPtr(std::atomic<size_t> *packedPtr)
+        : knownValue(packedPtr->fetch_add(1) + 1)
+        , foreignPackedPtr(*packedPtr)
+        , data(reinterpret_cast<ControlBlock<T>*>(knownValue >> MAGIC_LEN)->data)
+    {};
+
+    size_t knownValue;
+    std::atomic<size_t> &foreignPackedPtr;
+    T *data;
+
+    template<typename A> friend class AtomicSharedPtr;
+};
+
+
+template<typename T>
 class alignas(CACHE_LINE_SIZE) AtomicSharedPtr {
 public:
     AtomicSharedPtr(T *data = nullptr);
@@ -123,6 +160,7 @@ public:
     AtomicSharedPtr& operator=(AtomicSharedPtr &&other) = delete;
 
     SharedPtr<T> get();
+    FastSharedPtr<T> getFast();
 
     bool compareExchange(T *expected, SharedPtr<T> &&newOne); // this actually is strong version
 
@@ -185,6 +223,11 @@ SharedPtr<T> AtomicSharedPtr<T>::get() {
     // notification finished
 
     return SharedPtr<T>(block);
+}
+
+template<typename T>
+FastSharedPtr<T> AtomicSharedPtr<T>::getFast() {
+    return FastSharedPtr<T>(&packedPtr);
 }
 
 template<typename T>
