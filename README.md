@@ -86,6 +86,9 @@ and there won't be any lag with mutexed std::stack.
 
 # Proof-Of-Work
 Code passes thread, memory and address sanitizers while under stress test for 10+ minutes.
+There might be a false positive on std::map in memory sanitizer due to some external bug:
+[stackoverflow](https://stackoverflow.com/questions/60097307/memory-sanitizer-reports-use-of-uninitialized-value-in-global-object-constructio),
+[godbolt](https://godbolt.org/z/pZj6Lm).
 Implementation was not tested in any big production yet and not recommended for production use.
 
 # Build

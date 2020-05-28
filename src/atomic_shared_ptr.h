@@ -125,9 +125,17 @@ public:
     ~FastSharedPtr() {
         if (knownValue != 0) {
             size_t expected = knownValue;
-            while (!foreignPackedPtr.compare_exchange_weak(expected, expected - 1))
-                if (((expected >> MAGIC_LEN) != (knownValue >> MAGIC_LEN)) || !(expected & MAGIC_MASK))
-                    return;
+            while (!foreignPackedPtr.compare_exchange_weak(expected, expected - 1)) {
+                if (((expected >> MAGIC_LEN) != (knownValue >> MAGIC_LEN)) || !(expected & MAGIC_MASK)) {
+                    ControlBlock<T> *block = reinterpret_cast<ControlBlock<T>*>(knownValue >> MAGIC_LEN);
+                    size_t before = block->refCount.fetch_sub(1);
+                    if (before == 1) {
+                        delete data;
+                        delete block;
+                    }
+                    break;
+                }
+            }
         }
     };
 
@@ -138,7 +146,19 @@ private:
         : knownValue(packedPtr->fetch_add(1) + 1)
         , foreignPackedPtr(*packedPtr)
         , data(reinterpret_cast<ControlBlock<T>*>(knownValue >> MAGIC_LEN)->data)
-    {};
+    {
+        auto block = reinterpret_cast<ControlBlock<T>*>(knownValue >> MAGIC_LEN);
+        int diff = knownValue & MAGIC_MASK;
+        while (diff > 1000 && block == reinterpret_cast<ControlBlock<T>*>(knownValue >> MAGIC_LEN)) {
+            block->refCount.fetch_add(diff);
+            if (packedPtr->compare_exchange_strong(knownValue, knownValue - diff)) {
+                knownValue = 0;
+                break;
+            }
+            block->refCount.fetch_sub(diff);
+            diff = knownValue & MAGIC_MASK;
+        }
+    };
 
     size_t knownValue;
     std::atomic<size_t> &foreignPackedPtr;
@@ -268,6 +288,9 @@ void AtomicSharedPtr<T>::store(SharedPtr<T> &&data) {
 
 template<typename T>
 bool AtomicSharedPtr<T>::compareExchange(T *expected, SharedPtr<T> &&newOne) {
+    if (expected == newOne.get()) {
+        return true;
+    }
     auto holder = this->get();
     FAST_LOG(Operation::CompareAndSwap, reinterpret_cast<size_t>(holder.controlBlock));
     if (holder.get() == expected) {
