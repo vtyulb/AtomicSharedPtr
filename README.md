@@ -96,7 +96,7 @@ Implementation was not tested in any big production yet and not recommended for 
 git clone https://github.com/vtyulb/AtomicSharedPtr/
 cd AtomicSharedPtr
 mkdir build && cd build
-cmake -DENABLE_FAST_LOGGING=ON -DCMAKE_BUILD_TYPE=Release ..
+cmake -DENABLE_FAST_LOGGING=ON -DCMAKE_BUILD_TYPE=Release -DTSAN=OFF -DMSAN=OFF -DASAN=OFF ..
 make
 ./AtomicSharedPtr
 ```

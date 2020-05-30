@@ -304,7 +304,7 @@ bool AtomicSharedPtr<T>::compareExchange(T *expected, SharedPtr<T> &&newOne) {
         return true;
     }
     auto holder = this->getFast();
-    FAST_LOG(Operation::CompareAndSwap, reinterpret_cast<size_t>(holder.controlBlock));
+    FAST_LOG(Operation::CompareAndSwap, reinterpret_cast<size_t>(holder.getControlBlock()));
     if (holder.get() == expected) {
         size_t holdedPtr = reinterpret_cast<size_t>(holder.getControlBlock());
         size_t desiredPackedPtr = reinterpret_cast<size_t>(newOne.controlBlock) << MAGIC_LEN;
