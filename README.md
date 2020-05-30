@@ -104,12 +104,12 @@ make
 # Speed
 This is sample output with Core i7-6700hq processor. First column is number of operations push/pop divided around 50/50 by rand.
 All other columns are time in milliseconds which took the test to finish. LF structs are based on AtomicSharedPtr.
-Lockable structs use std::queue/std::stack/std::map and a mutex for synchronizations. Initial map size is 10000,  
+Lockable structs use std::queue/std::stack/std::map and a mutex for synchronizations. Initial map size is 10000,
 and most of map operations are reads. Lesser is better.
 
 There are a lot of optimizations still pending.
 ```
-vlad@vtyulb-thinkpad ~/AtomicSharedPtr/build (git)-[master] % ./AtomicSharedPtr                                                                                                       :(
+vlad@vtyulb-thinkpad ~/AtomicSharedPtr/build (git)-[master] % ./AtomicSharedPtr
 running simple LFMap test...
 
 running correctness LFMap test...
