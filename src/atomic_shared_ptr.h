@@ -139,17 +139,18 @@ public:
         }
     };
 
+    ControlBlock<T>* getControlBlock() { return reinterpret_cast<ControlBlock<T>*>(knownValue >> MAGIC_LEN); }
     T* get() { return data; }
     T* operator->(){ return data; }
 private:
     FastSharedPtr(std::atomic<size_t> *packedPtr)
         : knownValue(packedPtr->fetch_add(1) + 1)
         , foreignPackedPtr(*packedPtr)
-        , data(reinterpret_cast<ControlBlock<T>*>(knownValue >> MAGIC_LEN)->data)
+        , data(getControlBlock()->data)
     {
-        auto block = reinterpret_cast<ControlBlock<T>*>(knownValue >> MAGIC_LEN);
+        auto block = getControlBlock();
         int diff = knownValue & MAGIC_MASK;
-        while (diff > 1000 && block == reinterpret_cast<ControlBlock<T>*>(knownValue >> MAGIC_LEN)) {
+        while (diff > 1000 && block == getControlBlock()) {
             block->refCount.fetch_add(diff);
             if (packedPtr->compare_exchange_strong(knownValue, knownValue - diff)) {
                 knownValue = 0;
@@ -291,18 +292,18 @@ bool AtomicSharedPtr<T>::compareExchange(T *expected, SharedPtr<T> &&newOne) {
     if (expected == newOne.get()) {
         return true;
     }
-    auto holder = this->get();
+    auto holder = this->getFast();
     FAST_LOG(Operation::CompareAndSwap, reinterpret_cast<size_t>(holder.controlBlock));
     if (holder.get() == expected) {
-        size_t holdedPtr = reinterpret_cast<size_t>(holder.controlBlock);
+        size_t holdedPtr = reinterpret_cast<size_t>(holder.getControlBlock());
         size_t desiredPackedPtr = reinterpret_cast<size_t>(newOne.controlBlock) << MAGIC_LEN;
         size_t expectedPackedPtr = holdedPtr << MAGIC_LEN;
         while (holdedPtr == (expectedPackedPtr >> MAGIC_LEN)) {
             if (expectedPackedPtr & MAGIC_MASK) {
                 int diff = expectedPackedPtr & MAGIC_MASK;
-                holder.controlBlock->refCount.fetch_add(diff);
+                holder.getControlBlock()->refCount.fetch_add(diff);
                 if (!packedPtr.compare_exchange_weak(expectedPackedPtr, expectedPackedPtr & ~MAGIC_MASK)) {
-                    holder.controlBlock->refCount.fetch_sub(diff);
+                    holder.getControlBlock()->refCount.fetch_sub(diff);
                 }
                 continue;
             }
