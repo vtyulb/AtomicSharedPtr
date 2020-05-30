@@ -140,7 +140,7 @@ LFMap<Key, Value>::splitLessEq(const SharedPtr<Node> &root, Key key) {
     if (root.get() == nullptr)
         return {root, root};
 
-    if (root->key <= key) {
+    if (!(key < root->key)) {
         auto [rightLeft, rightRight] = splitLessEq(root->right, key);
 
         SharedPtr node(new Node());
