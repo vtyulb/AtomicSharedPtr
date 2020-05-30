@@ -59,11 +59,11 @@ AtomicSharedPtr::compareExchange():
 
 Stack:
 - Push is one or more {AtomicSharedPtr::get() + AtomicSharedPtr::compareExchange}
-- Pop is one or more {AtomicSharedPtr::get() + AtomicSharedPtr::compareExchange}
+- Pop is one or more {AtomicSharedPtr::getFast() + AtomicSharedPtr::compareExchange}
 
 Queue:
-- Push is AtomicSharedPtr::compareExchanged + one or more {AtomicSharedPtr::get() + AtomicSharedPtr::compareExchange}
-- Pop is one or more {AtomicSharedPtr::get() + test_and_set() + AtomicSharedPtr::compareExchange}
+- Push is AtomicSharedPtr::compareExchange + one or more {AtomicSharedPtr::getFast() + AtomicSharedPtr::get() + AtomicSharedPtr::compareExchange}
+- Pop is one or more {AtomicSharedPtr::getFast() + test_and_set() + AtomicSharedPtr::compareExchange}
 
 Map:
 - upsert is 1 or more {AtomicSharedPtr::get() + log(N) non-atomic instructions on average}
@@ -117,52 +117,52 @@ running correctness LFMap test...
 
 running LFMap stress test...
         1       2       3       4       5       6       7       8
-500000  272     429     473     454     461     539     452     585
-1000000 628     666     757     756     858     914     947     962
-1500000 676     1017    1071    1086    1190    1213    1190    1498
-2000000 732     1241    1256    1415    1405    1587    1784    1866
+500000  317     463     469     458     446     540     539     555
+1000000 555     708     723     810     768     833     923     1006
+1500000 641     1090    1105    1044    1169    1306    1307    1382
+2000000 926     1236    1304    1366    1426    1592    1682    1913
 
 running lockable map stress test
         1       2       3       4       5       6       7       8
-500000  56      326     206     239     258     294     311     349
-1000000 101     498     403     532     521     594     658     630
-1500000 149     854     589     766     779     964     961     953
-2000000 206     1149    830     947     1092    1169    1277    1298
+500000  60      280     202     248     268     308     322     321
+1000000 110     571     412     495     543     606     674     641
+1500000 162     868     616     793     815     905     945     966
+2000000 221     1142    883     1035    1074    1198    1281    1296
 
 
 running simple LFQueue test...
 
 running LFQueue stress test...
         1       2       3       4       5       6       7       8
-500000  256     448     380     417     387     397     443     506
-1000000 607     960     765     745     742     794     874     1016
-1500000 854     1549    1134    1126    1167    1216    1335    1530
-2000000 1055    2025    1545    1565    1529    1661    1797    2109
+500000  262     471     369     341     355     358     384     438
+1000000 559     1021    788     770     704     728     783     869
+1500000 824     1433    1188    1098    1095    1077    1170    1288
+2000000 1112    2040    1629    1424    1449    1438    1557    1761
 
 running lockable queue stress test...
         1       2       3       4       5       6       7       8
-500000  25      103     79      106     116     137     147     153
-1000000 46      211     162     229     227     273     294     307
-1500000 69      336     236     323     347     417     443     462
-2000000 90      414     319     431     461     553     586     614
+500000  25      109     81      110     118     139     150     158
+1000000 47      226     157     219     240     289     302     311
+1500000 74      341     241     342     351     423     447     474
+2000000 97      445     317     452     472     564     604     631
 
 running simple LFStack test...
 
 running LFStack stress test...
         1       2       3       4       5       6       7       8
-500000  175     304     393     476     442     557     660     840
-1000000 265     621     773     987     935     1180    1367    1692
-1500000 433     895     1186    1510    1521    1714    2028    2627
-2000000 564     1196    1602    2032    1935    2382    2714    3455
+500000  141     324     357     448     455     576     650     814
+1000000 282     613     719     955     970     1142    1339    1639
+1500000 423     965     1103    1446    1554    1651    2094    2488
+2000000 572     1255    1465    1887    1900    2250    2664    3338
 
 running lockable stack stress test...
         1       2       3       4       5       6       7       8
-500000  23      107     81      110     117     137     147     154
-1000000 49      217     160     217     234     276     297     312
-1500000 75      321     237     327     344     418     445     463
-2000000 92      396     320     433     470     558     596     622
+500000  23      111     78      108     115     138     147     157
+1000000 51      220     157     219     232     276     299     312
+1500000 71      327     235     331     346     418     444     466
+2000000 101     455     310     446     470     554     591     625
 
-./AtomicSharedPtr  443,32s user 146,62s system 414% cpu 2:22,37 total
+./AtomicSharedPtr  425,42s user 145,48s system 407% cpu 2:20,18 total
 ```
 
 # Debugging with FastLogger

@@ -41,7 +41,7 @@ void LFQueue<T>::push(const T &data) {
                              });
 
     while (true) {
-        SharedPtr<Node> currentBack = back.get();
+        FastSharedPtr<Node> currentBack = back.getFast();
         if (currentBack.get()->next.compareExchange(nullptr, newBack.copy())) {
             back.compareExchange(currentBack.get(), std::move(newBack));
             return;
@@ -56,14 +56,14 @@ void LFQueue<T>::push(const T &data) {
 template<typename T>
 std::optional<T> LFQueue<T>::pop() {
     FAST_LOG(Operation::Pop, 0);
-    auto res = front.get();
+    FastSharedPtr<Node> res = front.getFast();
     while (res.get()->consumed.test_and_set()) {
         auto nextPtr = res.get()->next.get();
         if (nextPtr.get() == nullptr) {
             return {};
         }
         front.compareExchange(res.get(), nextPtr.copy());
-        res = front.get();
+        res = front.getFast();
     }
 
     return { res.get()->data };

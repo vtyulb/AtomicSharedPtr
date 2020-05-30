@@ -120,12 +120,28 @@ public:
         , foreignPackedPtr(other.foreignPackedPtr)
         , data(other.data)
     {
-        other.knownValue = 0;
+        other.foreignPackedPtr = nullptr;
     };
+    FastSharedPtr& operator=(FastSharedPtr<T> &&other) {
+        destroy();
+        knownValue = other.knownValue;
+        foreignPackedPtr = other.foreignPackedPtr;
+        data = other.data;
+        other.foreignPackedPtr = nullptr;
+        return *this;
+    }
     ~FastSharedPtr() {
-        if (knownValue != 0) {
+        destroy();
+    };
+
+    ControlBlock<T>* getControlBlock() { return reinterpret_cast<ControlBlock<T>*>(knownValue >> MAGIC_LEN); }
+    T* get() { return data; }
+    T* operator->(){ return data; }
+private:
+    void destroy() {
+        if (foreignPackedPtr != nullptr) {
             size_t expected = knownValue;
-            while (!foreignPackedPtr.compare_exchange_weak(expected, expected - 1)) {
+            while (!foreignPackedPtr->compare_exchange_weak(expected, expected - 1)) {
                 if (((expected >> MAGIC_LEN) != (knownValue >> MAGIC_LEN)) || !(expected & MAGIC_MASK)) {
                     ControlBlock<T> *block = reinterpret_cast<ControlBlock<T>*>(knownValue >> MAGIC_LEN);
                     size_t before = block->refCount.fetch_sub(1);
@@ -137,15 +153,10 @@ public:
                 }
             }
         }
-    };
-
-    ControlBlock<T>* getControlBlock() { return reinterpret_cast<ControlBlock<T>*>(knownValue >> MAGIC_LEN); }
-    T* get() { return data; }
-    T* operator->(){ return data; }
-private:
+    }
     FastSharedPtr(std::atomic<size_t> *packedPtr)
         : knownValue(packedPtr->fetch_add(1) + 1)
-        , foreignPackedPtr(*packedPtr)
+        , foreignPackedPtr(packedPtr)
         , data(getControlBlock()->data)
     {
         auto block = getControlBlock();
@@ -153,7 +164,7 @@ private:
         while (diff > 1000 && block == getControlBlock()) {
             block->refCount.fetch_add(diff);
             if (packedPtr->compare_exchange_strong(knownValue, knownValue - diff)) {
-                knownValue = 0;
+                foreignPackedPtr = nullptr;
                 break;
             }
             block->refCount.fetch_sub(diff);
@@ -162,7 +173,7 @@ private:
     };
 
     size_t knownValue;
-    std::atomic<size_t> &foreignPackedPtr;
+    std::atomic<size_t> *foreignPackedPtr;
     T *data;
 
     template<typename A> friend class AtomicSharedPtr;

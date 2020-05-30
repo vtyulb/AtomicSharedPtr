@@ -38,12 +38,12 @@ void LFStack<T>::push(const T &data) {
 template<typename T>
 std::optional<T> LFStack<T>::pop() {
     FAST_LOG(Operation::Pop, 0);
-    SharedPtr<Node> res = top.get();
+    FastSharedPtr<Node> res = top.getFast();
     if (res.get() == nullptr)
         return {};
 
     while (!top.compareExchange(res.get(), res.get()->next.copy())) {
-        res = top.get();
+        res = top.getFast();
         if (res.get() == nullptr)
             return {};
     }
