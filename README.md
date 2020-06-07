@@ -40,7 +40,7 @@ because there can be several atomic pointers for the same control block.
 - LFStack, LFQueue, LFMap, LFMapAvl
 - FastLogger
 
-LFMap is something like a [treap](https://en.wikipedia.org/wiki/Treap) underneath.
+LFMap is based on a randomized [treap](https://en.wikipedia.org/wiki/Treap).
 LFMapAvl is an [avl tree](https://en.wikipedia.org/wiki/AVL_tree).
 
 AtomicSharedPtr::getFast() -> FastSharedPtr:
