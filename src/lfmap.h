@@ -1,5 +1,9 @@
 #pragma once
 
+#include <utility>
+
+#include "atomic_shared_ptr.h"
+
 namespace LFStructs {
 
 template<typename Key, typename Value>

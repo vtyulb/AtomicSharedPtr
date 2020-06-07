@@ -8,11 +8,12 @@
 #include <vector>
 #include <queue>
 #include <map>
-#include <signal.h>
+#include <csignal>
 
 #include "lfstack.h"
 #include "lfqueue.h"
 #include "lfmap.h"
+#include "lfmap_avl.h"
 
 void check(bool good) {
     if (!good)
@@ -47,12 +48,15 @@ void simple_queue_test() {
     check(!bool(queue.pop()));
 }
 
+template<typename Map>
 void simple_map_test() {
-    LFStructs::LFMap<int, int> map;
+    Map map;
     map.upsert(5, 100);
     check(*map.get(5) == 100);
     map.upsert(7, 101);
+    check(*map.get(5) == 100);
     map.upsert(6, 99);
+    check(*map.get(5) == 100);
     check(*map.get(6) == 99);
     check(*map.get(7) == 101);
     map.remove(7);
@@ -60,8 +64,9 @@ void simple_map_test() {
     check(!bool(map.get(7)));
 }
 
+template<typename Map>
 void correctness_map_test() {
-    LFStructs::LFMap<int, int> lfMap;
+    Map lfMap;
     std::map<int, int> map;
     for (int i = 0; i <= 1000000; i++) {
         if (i % 100000 == 0) {
@@ -92,9 +97,10 @@ void correctness_map_test() {
     printf("\n");
 }
 
+template<typename Map>
 void lfmap_stress_test(int actionNumber, int threadCount) {
     std::vector<std::thread> threads;
-    LFStructs::LFMap<int, int> map;
+    Map map;
     for (int i = 0; i < 10000; i++)
         map.upsert(rand() % 1000000, rand());
     for (int i = 0; i < threadCount; i++)
@@ -233,13 +239,27 @@ void abstractStressTest(std::function<void(int, int)> f) {
 
 void all_map_tests() {
     printf("running simple LFMap test...\n");
-    simple_map_test();
+    simple_map_test<LFStructs::LFMap<int, int>>();
+    printf("running simple LFMapAvl test...\n");
+    simple_map_test<LFStructs::LFMapAvl<int, int>>();
+
+#ifndef MSAN
     printf("\nrunning correctness LFMap test...\n");
-    correctness_map_test();
+    correctness_map_test<LFStructs::LFMap<int, int>>();
+    printf("\nrunning correctness LFMapAvl test...\n");
+    correctness_map_test<LFStructs::LFMapAvl<int, int>>();
+#endif
+
     printf("\nrunning LFMap stress test...\n");
-    abstractStressTest(lfmap_stress_test);
+    abstractStressTest(lfmap_stress_test<LFStructs::LFMap<int, int>>);
+    printf("\nrunning LFMapAvl stress test...\n");
+    abstractStressTest(lfmap_stress_test<LFStructs::LFMapAvl<int, int>>);
+
+#ifndef MSAN
     printf("\nrunning lockable map stress test\n");
     abstractStressTest(lockable_map_stress_test);
+#endif
+
     printf("\n\n");
 }
 

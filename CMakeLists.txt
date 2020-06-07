@@ -12,6 +12,7 @@ add_executable(AtomicSharedPtr
     src/lfqueue.h
     src/lfstack.h
     src/lfmap.h
+    src/lfmap_avl.h
     src/fast_logger.h
     src/atomic_shared_ptr.h
 )
@@ -33,6 +34,7 @@ endif()
 option(MSAN "Enables memory sanitizer" OFF)
 if (MSAN)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer -fsanitize=memory")
+    target_compile_definitions(AtomicSharedPtr PRIVATE "MSAN=1")
 endif()
 
 option(TSAN "Enables thread sanitizer" OFF)
