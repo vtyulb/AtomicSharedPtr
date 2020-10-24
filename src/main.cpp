@@ -20,6 +20,28 @@ void check(bool good) {
         abort();
 }
 
+void atomic_shared_ptr_concurrent_store_load_test() {
+    printf("running AtomicSharedPtr load/store test...\n");
+    const auto threadCount = std::thread::hardware_concurrency();
+    LFStructs::AtomicSharedPtr<int> sp(new int(0));
+    std::vector<std::thread> threads;
+    for (unsigned i = 0; i < threadCount/2; i++) {
+        threads.emplace_back([&sp]{
+            for (int j = 0; j < 1000000; j++)
+                sp.store(new int(42));
+        });
+    }
+    for (unsigned i = threadCount/2; i < threadCount; i++) {
+        threads.emplace_back([&sp]{
+            for (int j = 0; j < 1000000; j++)
+                sp.get();
+        });
+    }
+    for (auto &thread : threads) {
+        thread.join();
+    }
+}
+
 void simple_stack_test() {
     LFStructs::LFStack<int> stack;
     stack.push(5);
@@ -293,6 +315,7 @@ void abortTraceLogger(int sig) {
 int main()
 {
     signal(SIGABRT, abortTraceLogger);
+    atomic_shared_ptr_concurrent_store_load_test();
     all_map_tests();
     all_queue_tests();
     all_stack_tests();

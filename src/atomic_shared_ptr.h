@@ -293,9 +293,12 @@ void AtomicSharedPtr<T>::store(T *data) {
 
 template<typename T>
 void AtomicSharedPtr<T>::store(SharedPtr<T> &&data) {
-    auto oldPackedPtr = packedPtr.exchange(reinterpret_cast<size_t>(data.controlBlock) << MAGIC_LEN);
-    data.controlBlock = nullptr;
-    destroyOldControlBlock(oldPackedPtr);
+    while (true) {
+        auto holder = this->getFast();
+        if (compareExchange(holder.get(), std::move(data))) {
+            break;
+        }
+    }
 }
 
 template<typename T>

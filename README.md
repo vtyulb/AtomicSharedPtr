@@ -100,6 +100,7 @@ and most of map operations are reads. Lesser is better.
 There are a lot of optimizations still pending.
 ```
 vlad@vtyulb-thinkpad ~/AtomicSharedPtr/build (git)-[master] % ./AtomicSharedPtr
+running AtomicSharedPtr load/store test...
 running simple LFMap test...
 running simple LFMapAvl test...
 
@@ -163,7 +164,7 @@ running lockable stack stress test...
 1500000 67      332     238     336     343     414     448     470
 2000000 96      445     316     432     462     548     592     623
 
-./AtomicSharedPtr  466,24s user 177,86s system 400% cpu 2:40,63 total
+./AtomicSharedPtr  485,72s user 178,46s system 400% cpu 2:44,99 total
 ```
 
 # Debugging with FastLogger
