@@ -18,7 +18,7 @@ but mine implementation uses it's own block, because it's a lot easier.
 
 # Other implementations
 I currently know about 2 different std::atomic&lt;std::shared_ptr> implementations.
-First one is https://bitbucket.org/anthonyw/atomic_shared_ptr/src/default/atomic_shared_ptr
+First one is https://github.com/anthonywilliams/atomic_shared_ptr
 It uses 128-bit Compare-And-Swap (CAS) operations. Not every platform supports such operations
 and they are too slow.
 
