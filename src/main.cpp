@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <chrono>
+#include <functional>
 #include <thread>
 #include <mutex>
 #include <stack>
