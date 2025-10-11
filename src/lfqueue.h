@@ -25,9 +25,9 @@ private:
 
 template<typename T>
 LFQueue<T>::LFQueue() {
-    auto fakeNode = SharedPtr(new Node{
-                                  .consumed = true
-                              });
+    auto node = new Node { };
+    node->consumed.test_and_set(std::memory_order::relaxed);
+	auto fakeNode = SharedPtr(node);
 
     front.compareExchange(nullptr, fakeNode.copy());
     back.compareExchange(nullptr, std::move(fakeNode));
