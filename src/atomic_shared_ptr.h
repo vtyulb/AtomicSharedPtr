@@ -309,27 +309,41 @@ bool AtomicSharedPtr<T>::compareExchange(T *expected, SharedPtr<T> &&newOne) {
     auto holder = this->getFast();
     FAST_LOG(Operation::CompareAndSwap, reinterpret_cast<size_t>(holder.getControlBlock()));
     if (holder.get() == expected) {
-        size_t holdedPtr = reinterpret_cast<size_t>(holder.getControlBlock());
+        auto* controlBlock = holder.getControlBlock();
+        size_t holdedPtr = reinterpret_cast<size_t>(controlBlock);
         size_t desiredPackedPtr = reinterpret_cast<size_t>(newOne.controlBlock) << MAGIC_LEN;
-        size_t expectedPackedPtr = holdedPtr << MAGIC_LEN;
-        while (holdedPtr == (expectedPackedPtr >> MAGIC_LEN)) {
-            if (expectedPackedPtr & MAGIC_MASK) {
-                int diff = expectedPackedPtr & MAGIC_MASK;
-                holder.getControlBlock()->refCount.fetch_add(diff);
-                if (!packedPtr.compare_exchange_weak(expectedPackedPtr, expectedPackedPtr & ~MAGIC_MASK)) {
-                    holder.getControlBlock()->refCount.fetch_sub(diff);
-                }
+        size_t expectedPackedPtr = holder.knownValue;
+
+        int addCredits = 0;
+        while (true)
+        {
+            int localRefCount = expectedPackedPtr & MAGIC_MASK;
+            int diff = localRefCount - addCredits;
+            if (diff > 0) {
+                addCredits = localRefCount;
+                controlBlock->refCount.fetch_add(diff);
+            }
+
+            assert((expectedPackedPtr >> MAGIC_LEN) != (desiredPackedPtr >> MAGIC_LEN));
+            if (!packedPtr.compare_exchange_weak(expectedPackedPtr, desiredPackedPtr)) {
+                if (holdedPtr != (expectedPackedPtr >> MAGIC_LEN))
+                    break;
+
                 continue;
             }
-            assert((expectedPackedPtr >> MAGIC_LEN) != (desiredPackedPtr >> MAGIC_LEN));
-            if (packedPtr.compare_exchange_weak(expectedPackedPtr, desiredPackedPtr)) {
-                FAST_LOG(Operation::GetInCAS, expectedPackedPtr);
-                newOne.controlBlock = nullptr;
-                assert((expectedPackedPtr >> MAGIC_LEN) == holdedPtr);
-                destroyOldControlBlock(expectedPackedPtr);
-                return true;
-            }
+
+            FAST_LOG(Operation::GetInCAS, expectedPackedPtr);
+            newOne.controlBlock = nullptr;
+            assert((expectedPackedPtr >> MAGIC_LEN) == holdedPtr);
+
+            int finalCorrection = addCredits - localRefCount + 1;
+            assert(finalCorrection > 0);
+            controlBlock->refCount.fetch_sub(finalCorrection);
+
+            return true;
         }
+
+        controlBlock->refCount.fetch_sub(addCredits);
     }
 
     FAST_LOG(Operation::CASAbrt, reinterpret_cast<size_t>(holder.get()));
