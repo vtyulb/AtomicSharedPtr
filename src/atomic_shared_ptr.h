@@ -76,7 +76,11 @@ public:
         }
         return *this;
     }
-    ~SharedPtr() {
+    ~SharedPtr()
+	{
+        if (controlBlock == nullptr)
+            return;
+
         thread_local std::vector<ControlBlock<T>*> destructionQueue;
         thread_local bool destructionInProgress = false;
 
@@ -219,6 +223,9 @@ public:
 private:
     static void destroyOldControlBlock(size_t oldPackedPtr, int subCount = 1);
 
+	template<bool IsStoreOp>
+    bool compareExchangeImpl(T *expected, SharedPtr<T> &&newOne);
+
     /* first 48 bit - pointer to control block
      * last 16 bit - local refcount if anyone is accessing control block
      * through current AtomicSharedPtr instance right now */
@@ -310,23 +317,40 @@ void AtomicSharedPtr<T>::store(T *data) {
 }
 
 template<typename T>
-void AtomicSharedPtr<T>::store(SharedPtr<T> &&data) {
-    while (true) {
-        auto holder = this->getFast();
-        if (compareExchange(holder.get(), std::move(data))) {
-            break;
-        }
-    }
+void AtomicSharedPtr<T>::store(SharedPtr<T> &&data)
+{
+    auto success = compareExchangeImpl<true>(nullptr, std::move(data));
+    assert(success);
 }
 
 template<typename T>
-bool AtomicSharedPtr<T>::compareExchange(T *expected, SharedPtr<T> &&newOne) {
-    if (expected == newOne.get()) {
-        return true;
+bool AtomicSharedPtr<T>::compareExchange(T *expected, SharedPtr<T> &&newOne)
+{
+    return compareExchangeImpl<false>(expected, std::move(newOne));
+}
+
+template<typename T>
+template<bool IsStoreOp>
+bool AtomicSharedPtr<T>::compareExchangeImpl(T *expected, SharedPtr<T> &&newOne)
+{
+    if constexpr (IsStoreOp == false)
+    {
+	    if (expected == newOne.get())
+			return true;
     }
-    auto holder = this->getFast();
+
+    Reacquire:
+	auto holder = this->getFast();
     FAST_LOG(Operation::CompareAndSwap, reinterpret_cast<size_t>(holder.getControlBlock()));
-    if (holder.get() == expected) {
+
+    if constexpr (IsStoreOp)
+    {
+        if (holder.get() == newOne.get())
+            return true;
+    }
+
+	if (IsStoreOp || holder.get() == expected)
+    {
         auto* controlBlock = holder.getControlBlock();
         size_t holdedPtr = reinterpret_cast<size_t>(controlBlock);
         size_t desiredPackedPtr = reinterpret_cast<size_t>(newOne.controlBlock) << MAGIC_LEN;
@@ -387,6 +411,11 @@ bool AtomicSharedPtr<T>::compareExchange(T *expected, SharedPtr<T> &&newOne) {
 	            "Note that even if `this` still holds that same block, it would have to hold one global count of its own, thus we still can't observe 0 here"
 	        );
         }
+    }
+
+    if constexpr (IsStoreOp)
+    {
+        goto Reacquire;
     }
 
     FAST_LOG(Operation::CASAbrt, reinterpret_cast<size_t>(holder.get()));
