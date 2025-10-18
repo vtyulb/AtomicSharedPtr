@@ -11,11 +11,20 @@
 #include <vector>
 #include <deque>
 
+#ifdef _MSC_VER
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 namespace LFStructs {
 
-static uint64_t rdtsc() {
+static uint64_t rdtsc()
+{
 #ifdef _MSC_VER
-    return __rdtsc();
+    LARGE_INTEGER value;
+    QueryPerformanceCounter(&value);
+    return value.QuadPart;
 #else
     unsigned int lo,hi;
     __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
