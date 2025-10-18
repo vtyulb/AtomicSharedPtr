@@ -74,6 +74,7 @@ struct Operation {
 class FastLogger {
     struct Storage {
         std::mutex lock;
+        std::vector<std::vector<Operation>> pastOperations;
         std::vector<std::pair<std::thread::id, std::vector<Operation>*>> containers;
     };
 
@@ -87,8 +88,11 @@ public:
 
     ~FastLogger() {
         std::lock_guard guard{storage.lock};
-        for (auto i = storage.containers.begin(); i != storage.containers.end(); i++) {
-            if (i->first == std::this_thread::get_id()) {
+        for (auto i = storage.containers.begin(); i != storage.containers.end(); i++)
+        {
+            if (i->first == std::this_thread::get_id())
+            {
+                storage.pastOperations.emplace_back(std::move(data));
                 storage.containers.erase(i);
                 return;
             }
@@ -109,8 +113,22 @@ public:
     static void PrintTrace() {
         std::vector<std::pair<int, Operation>> ops;
         for (int threadNumber = 0; threadNumber < storage.containers.size(); threadNumber++)
-            for (const auto threadLocalOperation : *storage.containers[threadNumber].second)
+        for (const auto threadLocalOperation : *storage.containers[threadNumber].second)
+        {
+	        if (threadLocalOperation.time != 0)
+	        {
                 ops.push_back(std::make_pair(threadNumber, threadLocalOperation));
+	        }
+        }
+
+        for (auto& pastOps : storage.pastOperations)
+        for (const auto op : pastOps)
+        {
+            if (op.time != 0)
+            {
+				ops.push_back(std::make_pair(-1, op));
+            }
+        }
 
         std::sort(ops.begin(), ops.end(), [](const auto& a, const auto& b){
             return a.second.time < b.second.time;
