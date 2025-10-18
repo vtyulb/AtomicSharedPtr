@@ -49,6 +49,13 @@ struct Operation {
         Ref        = 50,
         Unref      = 51,
 
+    	Leak      = 80,
+
+    	CompareAndSwap_Diff = 90,
+    	CompareAndSwap_Diff2 = 91,
+    	CompareAndSwap_Inc = 92,
+    	FastUnref = 93,
+
         ObjectCreated = 100,
         ObjectDestroyed = 101
     } type;

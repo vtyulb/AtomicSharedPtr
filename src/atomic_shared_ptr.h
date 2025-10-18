@@ -97,12 +97,16 @@ public:
     T* operator->() const { return controlBlock->data; }
 
 private:
-    void unref(ControlBlock<T> *blockToUnref) {
-        if (blockToUnref) {
+    void unref(ControlBlock<T> *blockToUnref)
+	{
+        if (blockToUnref)
+        {
             int before = blockToUnref->refCount.fetch_sub(1);
             assert(before);
-            FAST_LOG(Operation::Unref, (reinterpret_cast<size_t>(blockToUnref) << MAGIC_LEN / 2) | before);
-            if (before == 1) {
+            FAST_LOG(Operation::Unref, reinterpret_cast<size_t>(blockToUnref) << MAGIC_LEN | before);
+
+        	if (before == 1)
+            {
                 FAST_LOG(Operation::ObjectDestroyed, reinterpret_cast<size_t>(blockToUnref));
                 ALLOCATOR::Free(blockToUnref->data);
                 ALLOCATOR::Free(blockToUnref);
@@ -145,16 +149,23 @@ private:
     void destroy() {
         if (foreignPackedPtr != nullptr) {
             size_t expected = knownValue;
-            while (!foreignPackedPtr->compare_exchange_weak(expected, expected - 1)) {
-                if (((expected >> MAGIC_LEN) != (knownValue >> MAGIC_LEN)) || !(expected & MAGIC_MASK)) {
+            while (!foreignPackedPtr->compare_exchange_weak(expected, expected - 1))
+            {
+                if (((expected >> MAGIC_LEN) != (knownValue >> MAGIC_LEN)) || !(expected & MAGIC_MASK))
+                {
                     ControlBlock<T> *block = reinterpret_cast<ControlBlock<T>*>(knownValue >> MAGIC_LEN);
 
                 	size_t before = block->refCount.fetch_sub(1);
+                	FAST_LOG(Operation::FastUnref, ((knownValue >> MAGIC_LEN) << MAGIC_LEN) | before);
+                	assert(before > 0);
+
                     if (before == 1)
                     {
+                        FAST_LOG(Operation::ObjectDestroyed, reinterpret_cast<size_t>(block));
                         ALLOCATOR::Free(data);
                         ALLOCATOR::Free(block);
                     }
+
                     break;
                 }
             }
@@ -328,7 +339,9 @@ bool AtomicSharedPtr<T>::compareExchange(T *expected, SharedPtr<T> &&newOne) {
             int diff = localRefCount - addCredits;
             if (diff > 0) {
                 addCredits = localRefCount;
-                controlBlock->refCount.fetch_add(diff);
+                auto before = controlBlock->refCount.fetch_add(diff);
+				FAST_LOG(Operation::CompareAndSwap_Inc, (expectedPackedPtr & ~MAGIC_MASK) | (before + diff));
+                assert(before > 0);
             }
 
             assert((expectedPackedPtr >> MAGIC_LEN) != (desiredPackedPtr >> MAGIC_LEN));
@@ -346,7 +359,9 @@ bool AtomicSharedPtr<T>::compareExchange(T *expected, SharedPtr<T> &&newOne) {
             int finalCorrection = addCredits - localRefCount + 1;
             assert(finalCorrection > 0);
             controlBlock->refCount.fetch_sub(finalCorrection);
+        	FAST_LOG(Operation::CompareAndSwap_Diff, reinterpret_cast<size_t>(holder.getControlBlock()) << MAGIC_LEN | diff);
 
+        	FAST_LOG(Operation::CompareAndSwap_Diff2, reinterpret_cast<size_t>(holder.getControlBlock()) << MAGIC_LEN | finalCorrection);
             return true;
         }
 
