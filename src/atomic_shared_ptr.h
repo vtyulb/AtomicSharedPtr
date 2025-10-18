@@ -217,7 +217,7 @@ public:
     void store(SharedPtr<T>&& data);
 
 private:
-    void destroyOldControlBlock(size_t oldPackedPtr);
+    static void destroyOldControlBlock(size_t oldPackedPtr, int subCount = 1);
 
     /* first 48 bit - pointer to control block
      * last 16 bit - local refcount if anyone is accessing control block
@@ -336,18 +336,21 @@ bool AtomicSharedPtr<T>::compareExchange(T *expected, SharedPtr<T> &&newOne) {
         while (true)
         {
             int localRefCount = expectedPackedPtr & MAGIC_MASK;
+
             int diff = localRefCount - addCredits;
-            if (diff > 0) {
-                addCredits = localRefCount;
+            if (diff > 1)
+            {
+                addCredits += diff;
                 auto before = controlBlock->refCount.fetch_add(diff);
 				FAST_LOG(Operation::CompareAndSwap_Inc, (expectedPackedPtr & ~MAGIC_MASK) | (before + diff));
                 assert(before > 0);
             }
 
             assert((expectedPackedPtr >> MAGIC_LEN) != (desiredPackedPtr >> MAGIC_LEN));
-            if (!packedPtr.compare_exchange_weak(expectedPackedPtr, desiredPackedPtr)) {
+            if (packedPtr.compare_exchange_weak(expectedPackedPtr, desiredPackedPtr) == false)
+            {
                 if (holdedPtr != (expectedPackedPtr >> MAGIC_LEN))
-                    break;
+                	break;
 
                 continue;
             }
@@ -356,16 +359,34 @@ bool AtomicSharedPtr<T>::compareExchange(T *expected, SharedPtr<T> &&newOne) {
             newOne.controlBlock = nullptr;
             assert((expectedPackedPtr >> MAGIC_LEN) == holdedPtr);
 
-            int finalCorrection = addCredits - localRefCount + 1;
-            assert(finalCorrection > 0);
-            controlBlock->refCount.fetch_sub(finalCorrection);
         	FAST_LOG(Operation::CompareAndSwap_Diff, reinterpret_cast<size_t>(holder.getControlBlock()) << MAGIC_LEN | diff);
 
+            int correctionForGlobalCounter = addCredits - localRefCount;
+            assert(correctionForGlobalCounter >= -1 && "The global ref count must be either on point, overshoot some, or exactly one down for `holder` it did not count in");
+
+            int finalCorrection = correctionForGlobalCounter;
+            finalCorrection += /*Yielding `holder` ownership*/ 1;
+            finalCorrection += /*Yielding `this` ownership*/ 1;
         	FAST_LOG(Operation::CompareAndSwap_Diff2, reinterpret_cast<size_t>(holder.getControlBlock()) << MAGIC_LEN | finalCorrection);
+			destroyOldControlBlock(expectedPackedPtr, finalCorrection);
+            holder.foreignPackedPtr = nullptr;
+
             return true;
         }
 
-        controlBlock->refCount.fetch_sub(addCredits);
+        if (addCredits)
+        {
+	        assert(addCredits > 0);
+
+	        auto before = controlBlock->refCount.fetch_sub(addCredits);
+	        assert
+			(
+	            before > 0 && 
+	            "At least `holder` must still have 1 active count by now"
+	            "That count must be now promoted to global by someone who exchanged block in `this`, otherwise we'd be still CASing"
+	            "Note that even if `this` still holds that same block, it would have to hold one global count of its own, thus we still can't observe 0 here"
+	        );
+        }
     }
 
     FAST_LOG(Operation::CASAbrt, reinterpret_cast<size_t>(holder.get()));
@@ -373,19 +394,24 @@ bool AtomicSharedPtr<T>::compareExchange(T *expected, SharedPtr<T> &&newOne) {
 }
 
 template<typename T>
-void AtomicSharedPtr<T>::destroyOldControlBlock(size_t oldPackedPtr) {
+void AtomicSharedPtr<T>::destroyOldControlBlock(size_t oldPackedPtr, int subCount)
+{
+    assert(subCount > 0);
     FAST_LOG(Operation::CASDestructed, oldPackedPtr);
 //    assert((oldPackedPtr & MAGIC_MASK) == 0);
 
     auto block = reinterpret_cast<ControlBlock<T>*>(oldPackedPtr >> MAGIC_LEN);
-    auto refCountBefore = block->refCount.fetch_sub(1);
-    FAST_LOG(Operation::Unref, refCountBefore);
-    assert(refCountBefore);
-    if (refCountBefore == 1) {
+    auto newRefCount = block->refCount.fetch_sub(subCount) - subCount;
+    FAST_LOG(Operation::Unref, ((oldPackedPtr >> MAGIC_LEN) << MAGIC_LEN) | newRefCount);
+    assert(newRefCount >= 0);
+
+	if (newRefCount == 0)
+    {
         FAST_LOG(Operation::ObjectDestroyed, reinterpret_cast<size_t>(block));
         ALLOCATOR::Free(block->data);
         ALLOCATOR::Free(block);
     }
+
     FAST_LOG(Operation::CASFin, oldPackedPtr);
 }
 
