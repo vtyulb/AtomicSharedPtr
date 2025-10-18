@@ -7,6 +7,7 @@
 #include <thread>
 #include <stack>
 
+#include "allocator.h"
 #include "fast_logger.h"
 
 namespace LFStructs {
@@ -29,17 +30,20 @@ struct alignas(CACHE_LINE_SIZE) ControlBlock {
     std::atomic<size_t> refCount;
 };
 
-
 template<typename T>
 class SharedPtr {
 public:
     SharedPtr(): controlBlock(nullptr) {}
-    explicit SharedPtr(T *data)
-        : controlBlock(new ControlBlock<T>(data))
+    explicit SharedPtr(T *data) :
+		controlBlock(ALLOCATOR::Allocate<ControlBlock<T>>(data))
     {
         FAST_LOG(Operation::ObjectCreated, reinterpret_cast<size_t>(controlBlock));
     }
-    explicit SharedPtr(ControlBlock<T> *controlBlock): controlBlock(controlBlock) {}
+
+    explicit SharedPtr(ControlBlock<T> *controlBlock) :
+		controlBlock(controlBlock)
+	{}
+
     SharedPtr(const SharedPtr &other) {
         controlBlock = other.controlBlock;
         if (controlBlock != nullptr) {
@@ -100,8 +104,8 @@ private:
             FAST_LOG(Operation::Unref, (reinterpret_cast<size_t>(blockToUnref) << MAGIC_LEN / 2) | before);
             if (before == 1) {
                 FAST_LOG(Operation::ObjectDestroyed, reinterpret_cast<size_t>(blockToUnref));
-                delete blockToUnref->data;
-                delete blockToUnref;
+                ALLOCATOR::Free(blockToUnref->data);
+                ALLOCATOR::Free(blockToUnref);
             }
         }
     }
@@ -144,10 +148,12 @@ private:
             while (!foreignPackedPtr->compare_exchange_weak(expected, expected - 1)) {
                 if (((expected >> MAGIC_LEN) != (knownValue >> MAGIC_LEN)) || !(expected & MAGIC_MASK)) {
                     ControlBlock<T> *block = reinterpret_cast<ControlBlock<T>*>(knownValue >> MAGIC_LEN);
-                    size_t before = block->refCount.fetch_sub(1);
-                    if (before == 1) {
-                        delete data;
-                        delete block;
+
+                	size_t before = block->refCount.fetch_sub(1);
+                    if (before == 1)
+                    {
+                        ALLOCATOR::Free(data);
+                        ALLOCATOR::Free(block);
                     }
                     break;
                 }
@@ -210,8 +216,9 @@ private:
 };
 
 template<typename T>
-AtomicSharedPtr<T>::AtomicSharedPtr(T *data) {
-    auto block = new ControlBlock(data);
+AtomicSharedPtr<T>::AtomicSharedPtr(T *data)
+{
+    auto block = ALLOCATOR::Allocate<ControlBlock<T>>(data);
     packedPtr.store(reinterpret_cast<size_t>(block) << MAGIC_LEN);
 }
 
@@ -361,8 +368,8 @@ void AtomicSharedPtr<T>::destroyOldControlBlock(size_t oldPackedPtr) {
     assert(refCountBefore);
     if (refCountBefore == 1) {
         FAST_LOG(Operation::ObjectDestroyed, reinterpret_cast<size_t>(block));
-        delete block->data;
-        delete block;
+        ALLOCATOR::Free(block->data);
+        ALLOCATOR::Free(block);
     }
     FAST_LOG(Operation::CASFin, oldPackedPtr);
 }

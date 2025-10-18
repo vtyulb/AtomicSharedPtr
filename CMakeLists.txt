@@ -20,6 +20,7 @@ add_executable(AtomicSharedPtr
     src/lfmap_avl.h
     src/fast_logger.h
     src/atomic_shared_ptr.h
+    src/allocator.h
 )
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -45,4 +46,9 @@ endif()
 option(TSAN "Enables thread sanitizer" OFF)
 if (TSAN)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer -fsanitize=thread")
+endif()
+
+option(ALLOCSAN "Enables allocation sanitizer" OFF)
+if (ALLOCSAN)
+    target_compile_definitions(AtomicSharedPtr PRIVATE "TRACK_ALLOCATIONS=1")
 endif()

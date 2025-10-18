@@ -11,6 +11,7 @@
 #include <map>
 #include <csignal>
 
+#include "allocator.h"
 #include "lfstack.h"
 #include "lfqueue.h"
 #include "lfmap.h"
@@ -21,15 +22,23 @@ void check(bool good) {
         abort();
 }
 
-void atomic_shared_ptr_concurrent_store_load_test() {
+void AssertNoOutstandingBlocks()
+{
+#ifdef TRACK_ALLOCATIONS
+    TrackingAllocator::AssertNoOutstandingAllocations();
+#endif
+}
+
+void atomic_shared_ptr_concurrent_store_load_test()
+{
     printf("running AtomicSharedPtr load/store test...\n");
     const auto threadCount = std::thread::hardware_concurrency();
-    LFStructs::AtomicSharedPtr<int> sp(new int(0));
+    LFStructs::AtomicSharedPtr<int> sp(ALLOCATOR::Allocate<int>(0));
     std::vector<std::thread> threads;
     for (unsigned i = 0; i < threadCount/2; i++) {
         threads.emplace_back([&sp]{
             for (int j = 0; j < 1000000; j++)
-                sp.store(new int(42));
+                sp.store(ALLOCATOR::Allocate<int>(42));
         });
     }
     for (unsigned i = threadCount/2; i < threadCount; i++) {
@@ -315,10 +324,20 @@ void abortTraceLogger(int sig) {
 
 int main()
 {
+    AssertNoOutstandingBlocks();
     signal(SIGABRT, abortTraceLogger);
+
     atomic_shared_ptr_concurrent_store_load_test();
-    all_map_tests();
-    all_queue_tests();
-    all_stack_tests();
-    return 0;
+    AssertNoOutstandingBlocks();
+
+	all_map_tests();
+    AssertNoOutstandingBlocks();
+
+	all_queue_tests();
+    AssertNoOutstandingBlocks();
+
+	all_stack_tests();
+    AssertNoOutstandingBlocks();
+
+	return 0;
 }
