@@ -92,7 +92,7 @@ SharedPtr<typename LFMap<Key, Value>::Node> LFMap<Key, Value>::merge(const Share
 
     SharedPtr<Node> root(new Node());
     root->size = left->size + right->size;
-    if (rand() * uint64_t(left->size + right->size) < left->size * RAND_MAX) {
+    if (rand() * uint64_t(left->size + right->size) < left->size * uint64_t(RAND_MAX)) {
         root->key = left->key;
         root->data = left->data;
         root->left = left->left;
