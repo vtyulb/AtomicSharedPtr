@@ -54,7 +54,7 @@ std::optional<Value> LFMap<Key, Value>::get(Key key) {
 
 template<typename Key, typename Value>
 void LFMap<Key, Value>::upsert(Key key, Value value) {
-    SharedPtr node(new Node());
+    SharedPtr node(ALLOCATOR::Allocate<Node>());
     node->key = key;
     node->data = value;
     node->size = 1;
@@ -90,7 +90,7 @@ SharedPtr<typename LFMap<Key, Value>::Node> LFMap<Key, Value>::merge(const Share
     if (right.get() == nullptr)
         return left;
 
-    SharedPtr<Node> root(new Node());
+    SharedPtr<Node> root(ALLOCATOR::Allocate<Node>());
     root->size = left->size + right->size;
     if (rand() * uint64_t(left->size + right->size) < left->size * uint64_t(RAND_MAX)) {
         root->key = left->key;
@@ -116,7 +116,7 @@ LFMap<Key, Value>::splitLess(const SharedPtr<Node> &root, Key key) {
     if (root->key < key) {
         auto [rightLeft, rightRight] = splitLess(root->right, key);
 
-        SharedPtr node(new Node());
+        SharedPtr node(ALLOCATOR::Allocate<Node>());
         node->key = root->key;
         node->data = root->data;
         node->left = root->left;
@@ -127,7 +127,7 @@ LFMap<Key, Value>::splitLess(const SharedPtr<Node> &root, Key key) {
     } else {
         auto [leftLeft, leftRight] = splitLess(root->left, key);
 
-        SharedPtr node(new Node());
+        SharedPtr node(ALLOCATOR::Allocate<Node>());
         node->key = root->key;
         node->data = root->data;
         node->left = leftRight;
@@ -147,7 +147,7 @@ LFMap<Key, Value>::splitLessEq(const SharedPtr<Node> &root, Key key) {
     if (!(key < root->key)) {
         auto [rightLeft, rightRight] = splitLessEq(root->right, key);
 
-        SharedPtr node(new Node());
+        SharedPtr node(ALLOCATOR::Allocate<Node>());
         node->key = root->key;
         node->data = root->data;
         node->left = root->left;
@@ -158,7 +158,7 @@ LFMap<Key, Value>::splitLessEq(const SharedPtr<Node> &root, Key key) {
     } else {
         auto [leftLeft, leftRight] = splitLessEq(root->left, key);
 
-        SharedPtr node(new Node());
+        SharedPtr node(ALLOCATOR::Allocate<Node>());
         node->key = root->key;
         node->data = root->data;
         node->left = leftRight;

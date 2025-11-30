@@ -1,5 +1,6 @@
 #pragma once
 
+#include "allocator.h"
 #include "atomic_shared_ptr.h"
 
 namespace LFStructs {
@@ -25,9 +26,9 @@ private:
 
 template<typename T>
 LFQueue<T>::LFQueue() {
-    auto fakeNode = SharedPtr(new Node{
-                                  .consumed = true
-                              });
+    auto node = ALLOCATOR::Allocate<Node>();
+    node->consumed.test_and_set(std::memory_order::relaxed);
+	auto fakeNode = SharedPtr(node);
 
     front.compareExchange(nullptr, fakeNode.copy());
     back.compareExchange(nullptr, std::move(fakeNode));
@@ -36,9 +37,11 @@ LFQueue<T>::LFQueue() {
 template<typename T>
 void LFQueue<T>::push(const T &data) {
     FAST_LOG(Operation::Push, data);
-    auto newBack = SharedPtr(new Node{
-                                 .data = data
-                             });
+
+	auto node = ALLOCATOR::Allocate<Node>();
+    node->data = data;
+
+	auto newBack = SharedPtr(node);
 
     while (true) {
         FastSharedPtr<Node> currentBack = back.getFast();

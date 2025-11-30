@@ -3,6 +3,7 @@
 #include <memory>
 #include <optional>
 
+#include "allocator.h"
 #include "atomic_shared_ptr.h"
 
 namespace LFStructs {
@@ -27,7 +28,7 @@ private:
 template<typename T>
 void LFStack<T>::push(const T &data) {
     FAST_LOG(Operation::Push, data);
-    SharedPtr<Node> newTop(new Node());
+    SharedPtr<Node> newTop(ALLOCATOR::Allocate<Node>());
     newTop->next = top.get();
     newTop->data = data;
     while (!top.compareExchange(newTop->next.get(), std::move(newTop))) {

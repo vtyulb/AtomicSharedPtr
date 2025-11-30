@@ -7,6 +7,7 @@
 #include <thread>
 #include <stack>
 
+#include "allocator.h"
 #include "fast_logger.h"
 
 namespace LFStructs {
@@ -29,17 +30,20 @@ struct alignas(CACHE_LINE_SIZE) ControlBlock {
     std::atomic<size_t> refCount;
 };
 
-
 template<typename T>
 class SharedPtr {
 public:
     SharedPtr(): controlBlock(nullptr) {}
-    explicit SharedPtr(T *data)
-        : controlBlock(new ControlBlock<T>(data))
+    explicit SharedPtr(T *data) :
+		controlBlock(ALLOCATOR::Allocate<ControlBlock<T>>(data))
     {
         FAST_LOG(Operation::ObjectCreated, reinterpret_cast<size_t>(controlBlock));
     }
-    explicit SharedPtr(ControlBlock<T> *controlBlock): controlBlock(controlBlock) {}
+
+    explicit SharedPtr(ControlBlock<T> *controlBlock) :
+		controlBlock(controlBlock)
+	{}
+
     SharedPtr(const SharedPtr &other) {
         controlBlock = other.controlBlock;
         if (controlBlock != nullptr) {
@@ -72,7 +76,11 @@ public:
         }
         return *this;
     }
-    ~SharedPtr() {
+    ~SharedPtr()
+	{
+        if (controlBlock == nullptr)
+            return;
+
         thread_local std::vector<ControlBlock<T>*> destructionQueue;
         thread_local bool destructionInProgress = false;
 
@@ -93,15 +101,19 @@ public:
     T* operator->() const { return controlBlock->data; }
 
 private:
-    void unref(ControlBlock<T> *blockToUnref) {
-        if (blockToUnref) {
+    void unref(ControlBlock<T> *blockToUnref)
+	{
+        if (blockToUnref)
+        {
             int before = blockToUnref->refCount.fetch_sub(1);
             assert(before);
-            FAST_LOG(Operation::Unref, (reinterpret_cast<size_t>(blockToUnref) << MAGIC_LEN / 2) | before);
-            if (before == 1) {
+            FAST_LOG(Operation::Unref, reinterpret_cast<size_t>(blockToUnref) << MAGIC_LEN | before);
+
+        	if (before == 1)
+            {
                 FAST_LOG(Operation::ObjectDestroyed, reinterpret_cast<size_t>(blockToUnref));
-                delete blockToUnref->data;
-                delete blockToUnref;
+                ALLOCATOR::Free(blockToUnref->data);
+                ALLOCATOR::Free(blockToUnref);
             }
         }
     }
@@ -141,14 +153,23 @@ private:
     void destroy() {
         if (foreignPackedPtr != nullptr) {
             size_t expected = knownValue;
-            while (!foreignPackedPtr->compare_exchange_weak(expected, expected - 1)) {
-                if (((expected >> MAGIC_LEN) != (knownValue >> MAGIC_LEN)) || !(expected & MAGIC_MASK)) {
+            while (!foreignPackedPtr->compare_exchange_weak(expected, expected - 1))
+            {
+                if (((expected >> MAGIC_LEN) != (knownValue >> MAGIC_LEN)) || !(expected & MAGIC_MASK))
+                {
                     ControlBlock<T> *block = reinterpret_cast<ControlBlock<T>*>(knownValue >> MAGIC_LEN);
-                    size_t before = block->refCount.fetch_sub(1);
-                    if (before == 1) {
-                        delete data;
-                        delete block;
+
+                	size_t before = block->refCount.fetch_sub(1);
+                	FAST_LOG(Operation::FastUnref, ((knownValue >> MAGIC_LEN) << MAGIC_LEN) | before);
+                	assert(before > 0);
+
+                    if (before == 1)
+                    {
+                        FAST_LOG(Operation::ObjectDestroyed, reinterpret_cast<size_t>(block));
+                        ALLOCATOR::Free(data);
+                        ALLOCATOR::Free(block);
                     }
+
                     break;
                 }
             }
@@ -200,7 +221,10 @@ public:
     void store(SharedPtr<T>&& data);
 
 private:
-    void destroyOldControlBlock(size_t oldPackedPtr);
+    static void destroyOldControlBlock(size_t oldPackedPtr, int subCount = 1);
+
+	template<bool IsStoreOp>
+    bool compareExchangeImpl(T *expected, SharedPtr<T> &&newOne);
 
     /* first 48 bit - pointer to control block
      * last 16 bit - local refcount if anyone is accessing control block
@@ -210,8 +234,9 @@ private:
 };
 
 template<typename T>
-AtomicSharedPtr<T>::AtomicSharedPtr(T *data) {
-    auto block = new ControlBlock(data);
+AtomicSharedPtr<T>::AtomicSharedPtr(T *data)
+{
+    auto block = ALLOCATOR::Allocate<ControlBlock<T>>(data);
     packedPtr.store(reinterpret_cast<size_t>(block) << MAGIC_LEN);
 }
 
@@ -292,44 +317,105 @@ void AtomicSharedPtr<T>::store(T *data) {
 }
 
 template<typename T>
-void AtomicSharedPtr<T>::store(SharedPtr<T> &&data) {
-    while (true) {
-        auto holder = this->getFast();
-        if (compareExchange(holder.get(), std::move(data))) {
-            break;
-        }
-    }
+void AtomicSharedPtr<T>::store(SharedPtr<T> &&data)
+{
+    auto success = compareExchangeImpl<true>(nullptr, std::move(data));
+    assert(success);
 }
 
 template<typename T>
-bool AtomicSharedPtr<T>::compareExchange(T *expected, SharedPtr<T> &&newOne) {
-    if (expected == newOne.get()) {
-        return true;
+bool AtomicSharedPtr<T>::compareExchange(T *expected, SharedPtr<T> &&newOne)
+{
+    return compareExchangeImpl<false>(expected, std::move(newOne));
+}
+
+template<typename T>
+template<bool IsStoreOp>
+bool AtomicSharedPtr<T>::compareExchangeImpl(T *expected, SharedPtr<T> &&newOne)
+{
+    if constexpr (IsStoreOp == false)
+    {
+	    if (expected == newOne.get())
+			return true;
     }
-    auto holder = this->getFast();
+
+    Reacquire:
+	auto holder = this->getFast();
     FAST_LOG(Operation::CompareAndSwap, reinterpret_cast<size_t>(holder.getControlBlock()));
-    if (holder.get() == expected) {
-        size_t holdedPtr = reinterpret_cast<size_t>(holder.getControlBlock());
+
+    if constexpr (IsStoreOp)
+    {
+        if (holder.get() == newOne.get())
+            return true;
+    }
+
+	if (IsStoreOp || holder.get() == expected)
+    {
+        auto* controlBlock = holder.getControlBlock();
+        size_t holdedPtr = reinterpret_cast<size_t>(controlBlock);
         size_t desiredPackedPtr = reinterpret_cast<size_t>(newOne.controlBlock) << MAGIC_LEN;
-        size_t expectedPackedPtr = holdedPtr << MAGIC_LEN;
-        while (holdedPtr == (expectedPackedPtr >> MAGIC_LEN)) {
-            if (expectedPackedPtr & MAGIC_MASK) {
-                int diff = expectedPackedPtr & MAGIC_MASK;
-                holder.getControlBlock()->refCount.fetch_add(diff);
-                if (!packedPtr.compare_exchange_weak(expectedPackedPtr, expectedPackedPtr & ~MAGIC_MASK)) {
-                    holder.getControlBlock()->refCount.fetch_sub(diff);
-                }
+        size_t expectedPackedPtr = holder.knownValue;
+
+        int addCredits = 0;
+        while (true)
+        {
+            int localRefCount = expectedPackedPtr & MAGIC_MASK;
+
+            int diff = localRefCount - addCredits;
+            if (diff > 1)
+            {
+                addCredits += diff;
+                auto before = controlBlock->refCount.fetch_add(diff);
+				FAST_LOG(Operation::CompareAndSwap_Inc, (expectedPackedPtr & ~MAGIC_MASK) | (before + diff));
+                assert(before > 0);
+            }
+
+            assert((expectedPackedPtr >> MAGIC_LEN) != (desiredPackedPtr >> MAGIC_LEN));
+            if (packedPtr.compare_exchange_weak(expectedPackedPtr, desiredPackedPtr) == false)
+            {
+                if (holdedPtr != (expectedPackedPtr >> MAGIC_LEN))
+                	break;
+
                 continue;
             }
-            assert((expectedPackedPtr >> MAGIC_LEN) != (desiredPackedPtr >> MAGIC_LEN));
-            if (packedPtr.compare_exchange_weak(expectedPackedPtr, desiredPackedPtr)) {
-                FAST_LOG(Operation::GetInCAS, expectedPackedPtr);
-                newOne.controlBlock = nullptr;
-                assert((expectedPackedPtr >> MAGIC_LEN) == holdedPtr);
-                destroyOldControlBlock(expectedPackedPtr);
-                return true;
-            }
+
+            FAST_LOG(Operation::GetInCAS, expectedPackedPtr);
+            newOne.controlBlock = nullptr;
+            assert((expectedPackedPtr >> MAGIC_LEN) == holdedPtr);
+
+        	FAST_LOG(Operation::CompareAndSwap_Diff, reinterpret_cast<size_t>(holder.getControlBlock()) << MAGIC_LEN | diff);
+
+            int correctionForGlobalCounter = addCredits - localRefCount;
+            assert(correctionForGlobalCounter >= -1 && "The global ref count must be either on point, overshoot some, or exactly one down for `holder` it did not count in");
+
+            int finalCorrection = correctionForGlobalCounter;
+            finalCorrection += /*Yielding `holder` ownership*/ 1;
+            finalCorrection += /*Yielding `this` ownership*/ 1;
+        	FAST_LOG(Operation::CompareAndSwap_Diff2, reinterpret_cast<size_t>(holder.getControlBlock()) << MAGIC_LEN | finalCorrection);
+			destroyOldControlBlock(expectedPackedPtr, finalCorrection);
+            holder.foreignPackedPtr = nullptr;
+
+            return true;
         }
+
+        if (addCredits)
+        {
+	        assert(addCredits > 0);
+
+	        auto before = controlBlock->refCount.fetch_sub(addCredits);
+	        assert
+			(
+	            before > 0 && 
+	            "At least `holder` must still have 1 active count by now"
+	            "That count must be now promoted to global by someone who exchanged block in `this`, otherwise we'd be still CASing"
+	            "Note that even if `this` still holds that same block, it would have to hold one global count of its own, thus we still can't observe 0 here"
+	        );
+        }
+    }
+
+    if constexpr (IsStoreOp)
+    {
+        goto Reacquire;
     }
 
     FAST_LOG(Operation::CASAbrt, reinterpret_cast<size_t>(holder.get()));
@@ -337,19 +423,24 @@ bool AtomicSharedPtr<T>::compareExchange(T *expected, SharedPtr<T> &&newOne) {
 }
 
 template<typename T>
-void AtomicSharedPtr<T>::destroyOldControlBlock(size_t oldPackedPtr) {
+void AtomicSharedPtr<T>::destroyOldControlBlock(size_t oldPackedPtr, int subCount)
+{
+    assert(subCount > 0);
     FAST_LOG(Operation::CASDestructed, oldPackedPtr);
 //    assert((oldPackedPtr & MAGIC_MASK) == 0);
 
     auto block = reinterpret_cast<ControlBlock<T>*>(oldPackedPtr >> MAGIC_LEN);
-    auto refCountBefore = block->refCount.fetch_sub(1);
-    FAST_LOG(Operation::Unref, refCountBefore);
-    assert(refCountBefore);
-    if (refCountBefore == 1) {
+    auto newRefCount = block->refCount.fetch_sub(subCount) - subCount;
+    FAST_LOG(Operation::Unref, ((oldPackedPtr >> MAGIC_LEN) << MAGIC_LEN) | newRefCount);
+    assert(newRefCount >= 0);
+
+	if (newRefCount == 0)
+    {
         FAST_LOG(Operation::ObjectDestroyed, reinterpret_cast<size_t>(block));
-        delete block->data;
-        delete block;
+        ALLOCATOR::Free(block->data);
+        ALLOCATOR::Free(block);
     }
+
     FAST_LOG(Operation::CASFin, oldPackedPtr);
 }
 

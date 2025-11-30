@@ -58,7 +58,7 @@ AtomicSharedPtr::get() -> SharedPtr:
 
 AtomicSharedPtr::compareExchange():
 - This is actually a strong version
-- 1 AtomicSharedPtr::getFast() + zero or more {fetch_add + CAS + fetch_sub} + one or more CAS
+- 1 AtomicSharedPtr::getFast() + 1 CAS + 1 fetch_sub. One or more fetch_add might be required on active work
 
 I suggest you to look at [queue](https://github.com/vtyulb/AtomicSharedPtr/blob/master/src/lfqueue.h) and
 [stack](https://github.com/vtyulb/AtomicSharedPtr/blob/master/src/lfstack.h) code - life becomes

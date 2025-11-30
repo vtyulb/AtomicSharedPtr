@@ -92,14 +92,14 @@ std::optional<Value> LFMapAvl<Key, Value>::get(Key key) {
 template<typename Key, typename Value>
 SharedPtr<typename LFMapAvl<Key, Value>::Node> LFMapAvl<Key, Value>::upsert(const SharedPtr<Node> &root, Key key, Value data) {
     if (root.get() == nullptr) {
-        SharedPtr<Node> res(new Node());
+        SharedPtr<Node> res(ALLOCATOR::Allocate<Node>());
         res->key = key;
         res->data = data;
         res->height = 1;
         return res;
     }
 
-    SharedPtr<Node> newRoot(new Node());
+    SharedPtr<Node> newRoot(ALLOCATOR::Allocate<Node>());
     newRoot->key = root->key;
     newRoot->data = root->data;
 
@@ -145,14 +145,14 @@ SharedPtr<typename LFMapAvl<Key, Value>::Node> LFMapAvl<Key, Value>::balance(con
 
 template<typename Key, typename Value>
 SharedPtr<typename LFMapAvl<Key, Value>::Node> LFMapAvl<Key, Value>::rotateLeft(const SharedPtr<Node> &root) {
-    SharedPtr<Node> a(new Node());
+    SharedPtr<Node> a(ALLOCATOR::Allocate<Node>());
     a->key = root->key;
     a->data = root->data;
     a->left = root->left;
     a->right = root->right->left;
     a->updateHeight();
 
-    SharedPtr<Node> b(new Node());
+    SharedPtr<Node> b(ALLOCATOR::Allocate<Node>());
     b->key = root->right->key;
     b->data = root->right->data;
     b->left = std::move(a);
@@ -164,14 +164,14 @@ SharedPtr<typename LFMapAvl<Key, Value>::Node> LFMapAvl<Key, Value>::rotateLeft(
 
 template<typename Key, typename Value>
 SharedPtr<typename LFMapAvl<Key, Value>::Node> LFMapAvl<Key, Value>::rotateRight(const SharedPtr<Node> &root) {
-    SharedPtr<Node> a(new Node());
+    SharedPtr<Node> a(ALLOCATOR::Allocate<Node>());
     a->key = root->key;
     a->data = root->data;
     a->left = root->left->right;
     a->right = root->right;
     a->updateHeight();
 
-    SharedPtr<Node> b(new Node());
+    SharedPtr<Node> b(ALLOCATOR::Allocate<Node>());
     b->key = root->left->key;
     b->data = root->left->data;
     b->left = root->left->left;
@@ -183,21 +183,21 @@ SharedPtr<typename LFMapAvl<Key, Value>::Node> LFMapAvl<Key, Value>::rotateRight
 
 template<typename Key, typename Value>
 SharedPtr<typename LFMapAvl<Key, Value>::Node> LFMapAvl<Key, Value>::bigRotateLeft(const SharedPtr<Node> &root) {
-    SharedPtr<Node> a(new Node());
+    SharedPtr<Node> a(ALLOCATOR::Allocate<Node>());
     a->key = root->key;
     a->data = root->data;
     a->left = root->left;
     a->right = root->right->left->left;
     a->updateHeight();
 
-    SharedPtr<Node> b(new Node());
+    SharedPtr<Node> b(ALLOCATOR::Allocate<Node>());
     b->key = root->right->key;
     b->data = root->right->data;
     b->left = root->right->left->right;
     b->right = root->right->right;
     b->updateHeight();
 
-    SharedPtr<Node> c(new Node());
+    SharedPtr<Node> c(ALLOCATOR::Allocate<Node>());
     c->key = root->right->left->key;
     c->data = root->right->left->data;
     c->left = std::move(a);
@@ -209,21 +209,21 @@ SharedPtr<typename LFMapAvl<Key, Value>::Node> LFMapAvl<Key, Value>::bigRotateLe
 
 template<typename Key, typename Value>
 SharedPtr<typename LFMapAvl<Key, Value>::Node> LFMapAvl<Key, Value>::bigRotateRight(const SharedPtr<Node> &root) {
-    SharedPtr<Node> a(new Node());
+    SharedPtr<Node> a(ALLOCATOR::Allocate<Node>());
     a->key = root->key;
     a->data = root->data;
     a->left = root->left->right->right;
     a->right = root->right;
     a->updateHeight();
 
-    SharedPtr<Node> b(new Node());
+    SharedPtr<Node> b(ALLOCATOR::Allocate<Node>());
     b->key = root->left->key;
     b->data = root->left->data;
     b->left = root->left->left;
     b->right = root->left->right->left;
     b->updateHeight();
 
-    SharedPtr<Node> c(new Node());
+    SharedPtr<Node> c(ALLOCATOR::Allocate<Node>());
     c->key = root->left->right->key;
     c->data = root->left->right->data;
     c->left = std::move(b);
@@ -243,7 +243,7 @@ SharedPtr<typename LFMapAvl<Key, Value>::Node> LFMapAvl<Key, Value>::remove(cons
         if (newRight.get() == root->right.get())
             return root;
 
-        SharedPtr<Node> newRoot(new Node());
+        SharedPtr<Node> newRoot(ALLOCATOR::Allocate<Node>());
         newRoot->key = root->key;
         newRoot->data = root->data;
         newRoot->left = root->left;
@@ -256,7 +256,7 @@ SharedPtr<typename LFMapAvl<Key, Value>::Node> LFMapAvl<Key, Value>::remove(cons
         if (newLeft.get() == root->left.get())
             return root;
 
-        SharedPtr<Node> newRoot(new Node());
+        SharedPtr<Node> newRoot(ALLOCATOR::Allocate<Node>());
         newRoot->key = root->key;
         newRoot->data = root->data;
         newRoot->left = std::move(newLeft);
@@ -274,7 +274,7 @@ SharedPtr<typename LFMapAvl<Key, Value>::Node> LFMapAvl<Key, Value>::remove(cons
             while (targetLeft->right.get() != nullptr)
                 targetLeft = targetLeft->right.get();
 
-            SharedPtr<Node> newRoot(new Node());
+            SharedPtr<Node> newRoot(ALLOCATOR::Allocate<Node>());
             newRoot->key = targetLeft->key;
             newRoot->data = targetLeft->data;
             newRoot->left = remove(root->left, targetLeft->key);
@@ -286,7 +286,7 @@ SharedPtr<typename LFMapAvl<Key, Value>::Node> LFMapAvl<Key, Value>::remove(cons
             while (targetRight->left.get() != nullptr)
                 targetRight = targetRight->left.get();
 
-            SharedPtr<Node> newRoot(new Node());
+            SharedPtr<Node> newRoot(ALLOCATOR::Allocate<Node>());
             newRoot->key = targetRight->key;
             newRoot->data = targetRight->data;
             newRoot->left = root->left;
