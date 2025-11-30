@@ -4,6 +4,7 @@
 #include <mutex>
 #include <memory>
 #include <unordered_set>
+#include <source_location>
 
 #include "fast_logger.h"
 
@@ -34,8 +35,7 @@ struct TrackingAllocator
 
 		{
 			std::unique_lock lock{ Lock };
-			const char* tpn = __FUNCSIG__;
-			ActiveAllocations.insert({ ptr, tpn });
+			ActiveAllocations.insert({ ptr, std::source_location::current().function_name() });
 		}
 
 		return ptr;

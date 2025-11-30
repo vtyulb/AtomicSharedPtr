@@ -17,6 +17,8 @@
 #include "lfmap.h"
 #include "lfmap_avl.h"
 
+const size_t ThreadCount = std::min(std::thread::hardware_concurrency(), 8u);
+
 void check(bool good) {
     if (!good)
         abort();
@@ -32,16 +34,15 @@ void AssertNoOutstandingBlocks()
 void atomic_shared_ptr_concurrent_store_load_test()
 {
     printf("running AtomicSharedPtr load/store test...\n");
-    const auto threadCount = std::thread::hardware_concurrency();
     LFStructs::AtomicSharedPtr<int> sp(ALLOCATOR::Allocate<int>(0));
     std::vector<std::thread> threads;
-    for (unsigned i = 0; i < threadCount/2; i++) {
+    for (unsigned i = 0; i < ThreadCount/2; i++) {
         threads.emplace_back([&sp]{
             for (int j = 0; j < 1000000; j++)
                 sp.store(ALLOCATOR::Allocate<int>(42));
         });
     }
-    for (unsigned i = threadCount/2; i < threadCount; i++) {
+    for (unsigned i = ThreadCount/2; i < ThreadCount; i++) {
         threads.emplace_back([&sp]{
             for (int j = 0; j < 1000000; j++)
                 sp.get();
@@ -253,12 +254,12 @@ void stress_test(int actionNumber, int threadCount) {
 }
 
 void abstractStressTest(std::function<void(int, int)> f) {
-    for (int i = 1; i <= std::thread::hardware_concurrency(); i++)
+    for (int i = 1; i <= ThreadCount; i++)
         printf("\t%d", i);
     printf("\n");
     for (int i = 500000; i <= 2000000; i += 500000) {
         printf("%d\t", i);
-        for (int j = 1; j <= std::thread::hardware_concurrency(); j++) {
+        for (int j = 1; j <= ThreadCount; j++) {
             std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
             f(i, j);
             std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();

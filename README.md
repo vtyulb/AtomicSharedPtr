@@ -1,6 +1,9 @@
 # AtomicSharedPtr
 Lock-Free implementation of std::atomic&lt;std::shared_ptr> &amp; several Lock-Free data structures based on it
 
+> [!NOTE]
+> Current version has deep algorithm [refactoring](https://github.com/vtyulb/AtomicSharedPtr/pull/7) from @InflexCZE. These changes include inverted facebook-like local counter cache. If you are interested in simple algorithm, you should view [stable branch](https://github.com/vtyulb/AtomicSharedPtr/tree/stable) without performance commits.
+
 # Motivation
 This project was created as a proof-of-concept for std::atomic&lt;std::shared_ptr>.
 In [proposal N4058](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n4058.pdf) Herb Sutter
@@ -86,7 +89,7 @@ Implementation was not tested in any big production yet and not recommended for 
 git clone https://github.com/vtyulb/AtomicSharedPtr/
 cd AtomicSharedPtr
 mkdir build && cd build
-cmake -DENABLE_FAST_LOGGING=ON -DCMAKE_BUILD_TYPE=Release -DTSAN=OFF -DMSAN=OFF -DASAN=OFF ..
+cmake -DENABLE_FAST_LOGGING=ON -DCMAKE_BUILD_TYPE=Release -DTSAN=OFF -DMSAN=OFF -DASAN=OFF -DALLOCSAN=OFF ..
 make
 ./AtomicSharedPtr
 ```

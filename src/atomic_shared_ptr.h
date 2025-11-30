@@ -333,89 +333,80 @@ template<typename T>
 template<bool IsStoreOp>
 bool AtomicSharedPtr<T>::compareExchangeImpl(T *expected, SharedPtr<T> &&newOne)
 {
-    if constexpr (IsStoreOp == false)
-    {
-	    if (expected == newOne.get())
-			return true;
-    }
+    if (!IsStoreOp && expected == newOne.get())
+        return true;
 
-    Reacquire:
-	auto holder = this->getFast();
-    FAST_LOG(Operation::CompareAndSwap, reinterpret_cast<size_t>(holder.getControlBlock()));
+    while (true) {
+        auto holder = this->getFast();
+        FAST_LOG(Operation::CompareAndSwap, reinterpret_cast<size_t>(holder.getControlBlock()));
 
-    if constexpr (IsStoreOp)
-    {
-        if (holder.get() == newOne.get())
+        if (IsStoreOp && holder.get() == newOne.get())
             return true;
-    }
 
-	if (IsStoreOp || holder.get() == expected)
-    {
-        auto* controlBlock = holder.getControlBlock();
-        size_t holdedPtr = reinterpret_cast<size_t>(controlBlock);
-        size_t desiredPackedPtr = reinterpret_cast<size_t>(newOne.controlBlock) << MAGIC_LEN;
-        size_t expectedPackedPtr = holder.knownValue;
+        if (IsStoreOp || holder.get() == expected) {
+            auto *controlBlock = holder.getControlBlock();
+            size_t holdedPtr = reinterpret_cast<size_t>(controlBlock);
+            size_t desiredPackedPtr = reinterpret_cast<size_t>(newOne.controlBlock) << MAGIC_LEN;
+            size_t expectedPackedPtr = holder.knownValue;
 
-        int addCredits = 0;
-        while (true)
-        {
-            int localRefCount = expectedPackedPtr & MAGIC_MASK;
+            int addCredits = 0;
+            while (true) {
+                int localRefCount = expectedPackedPtr & MAGIC_MASK;
 
-            int diff = localRefCount - addCredits;
-            if (diff > 1)
-            {
-                addCredits += diff;
-                auto before = controlBlock->refCount.fetch_add(diff);
-				FAST_LOG(Operation::CompareAndSwap_Inc, (expectedPackedPtr & ~MAGIC_MASK) | (before + diff));
-                assert(before > 0);
+                int diff = localRefCount - addCredits;
+                if (diff > 1) {
+                    addCredits += diff;
+                    auto before = controlBlock->refCount.fetch_add(diff);
+                    FAST_LOG(Operation::CompareAndSwap_Inc, (expectedPackedPtr & ~MAGIC_MASK) | (before + diff));
+                    assert(before > 0);
+                }
+
+                assert((expectedPackedPtr >> MAGIC_LEN) != (desiredPackedPtr >> MAGIC_LEN));
+                if (packedPtr.compare_exchange_weak(expectedPackedPtr, desiredPackedPtr) == false) {
+                    if (holdedPtr != (expectedPackedPtr >> MAGIC_LEN))
+                        break;
+
+                    continue;
+                }
+
+                FAST_LOG(Operation::GetInCAS, expectedPackedPtr);
+                newOne.controlBlock = nullptr;
+                assert((expectedPackedPtr >> MAGIC_LEN) == holdedPtr);
+
+                FAST_LOG(Operation::CompareAndSwap_Diff,
+                         reinterpret_cast<size_t>(holder.getControlBlock()) << MAGIC_LEN | diff);
+
+                int correctionForGlobalCounter = addCredits - localRefCount;
+                assert(correctionForGlobalCounter >= -1 &&
+                       "The global ref count must be either on point, overshoot some, or exactly one down for `holder` it did not count in");
+
+                int finalCorrection = correctionForGlobalCounter;
+                finalCorrection += /*Yielding `holder` ownership*/ 1;
+                finalCorrection += /*Yielding `this` ownership*/ 1;
+                FAST_LOG(Operation::CompareAndSwap_Diff2,
+                         reinterpret_cast<size_t>(holder.getControlBlock()) << MAGIC_LEN | finalCorrection);
+                destroyOldControlBlock(expectedPackedPtr, finalCorrection);
+                holder.foreignPackedPtr = nullptr;
+
+                return true;
             }
 
-            assert((expectedPackedPtr >> MAGIC_LEN) != (desiredPackedPtr >> MAGIC_LEN));
-            if (packedPtr.compare_exchange_weak(expectedPackedPtr, desiredPackedPtr) == false)
-            {
-                if (holdedPtr != (expectedPackedPtr >> MAGIC_LEN))
-                	break;
+            if (addCredits) {
+                assert(addCredits > 0);
 
-                continue;
+                auto before = controlBlock->refCount.fetch_sub(addCredits);
+                assert
+                (
+                        before > 0 &&
+                        "At least `holder` must still have 1 active count by now"
+                        "That count must be now promoted to global by someone who exchanged block in `this`, otherwise we'd be still CASing"
+                        "Note that even if `this` still holds that same block, it would have to hold one global count of its own, thus we still can't observe 0 here"
+                );
             }
-
-            FAST_LOG(Operation::GetInCAS, expectedPackedPtr);
-            newOne.controlBlock = nullptr;
-            assert((expectedPackedPtr >> MAGIC_LEN) == holdedPtr);
-
-        	FAST_LOG(Operation::CompareAndSwap_Diff, reinterpret_cast<size_t>(holder.getControlBlock()) << MAGIC_LEN | diff);
-
-            int correctionForGlobalCounter = addCredits - localRefCount;
-            assert(correctionForGlobalCounter >= -1 && "The global ref count must be either on point, overshoot some, or exactly one down for `holder` it did not count in");
-
-            int finalCorrection = correctionForGlobalCounter;
-            finalCorrection += /*Yielding `holder` ownership*/ 1;
-            finalCorrection += /*Yielding `this` ownership*/ 1;
-        	FAST_LOG(Operation::CompareAndSwap_Diff2, reinterpret_cast<size_t>(holder.getControlBlock()) << MAGIC_LEN | finalCorrection);
-			destroyOldControlBlock(expectedPackedPtr, finalCorrection);
-            holder.foreignPackedPtr = nullptr;
-
-            return true;
         }
 
-        if (addCredits)
-        {
-	        assert(addCredits > 0);
-
-	        auto before = controlBlock->refCount.fetch_sub(addCredits);
-	        assert
-			(
-	            before > 0 && 
-	            "At least `holder` must still have 1 active count by now"
-	            "That count must be now promoted to global by someone who exchanged block in `this`, otherwise we'd be still CASing"
-	            "Note that even if `this` still holds that same block, it would have to hold one global count of its own, thus we still can't observe 0 here"
-	        );
-        }
-    }
-
-    if constexpr (IsStoreOp)
-    {
-        goto Reacquire;
+        if (!IsStoreOp)
+            break;
     }
 
     FAST_LOG(Operation::CASAbrt, reinterpret_cast<size_t>(holder.get()));
@@ -427,7 +418,6 @@ void AtomicSharedPtr<T>::destroyOldControlBlock(size_t oldPackedPtr, int subCoun
 {
     assert(subCount > 0);
     FAST_LOG(Operation::CASDestructed, oldPackedPtr);
-//    assert((oldPackedPtr & MAGIC_MASK) == 0);
 
     auto block = reinterpret_cast<ControlBlock<T>*>(oldPackedPtr >> MAGIC_LEN);
     auto newRefCount = block->refCount.fetch_sub(subCount) - subCount;
